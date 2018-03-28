@@ -1,1 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns = "http://www.w3.org/ns/widgets"
+        xmlns:gap = "http://phonegap.com/ns/1.0"
+        id        = "com.kccc.strada"
+        versionCode="1.02"
+        version   = "1.02">
+    <name>Дача.Сад.Огород</name>
+    <description>Каталог продукции компании ООО "СТРАДА"</description>
+    <author href="kccc.ru" email="support@kccc.ru">TradeHouse</author>
 
+    <platform name="ios" />
+    <platform name="android" />
+
+
+
+    <!-- настройки смотрим на http://cordova.apache.org/docs/en/latest/config_ref/index.html -->
+    <!-- common -->
+    <preference name="orientation" value="default" />
+    <preference name="phonegap-version" value="cli-6.3.0" />
+    <preference name="fullscreen" value="false" />
+    <!-- set to true if you don't want the interface to display any feedback when users scroll past the beginning or end of content. -->
+    <preference name="disallowOverscroll" value="false"/>
+    <preference name="backgroundColor" value="0x40ae1a"/>
+    <!-- set to true to hide the additional toolbar that appears above the keyboard, helping users navigate from one form input to another. -->
+    <preference name="hideKeyboardFormAccessoryBar" value="true"/>
+    <!-- If set, will display the referenced page upon an error in the application instead of a dialog with the title "Application Error". -->
+    <preference name="errorUrl" value=""/>
+    <!-- When loading a page, the amount of time to wait before throwing a timeout error. -->
+    <preference name="LoadUrlTimeoutValue" value="10000" />
+
+
+    <!-- iOS -->
+    <preference name="deployment-target" value="7.0" />
+    <preference name="target-device" value="universal" />
+    <preference name="prerendered-icon" value="false" />
+    <preference name="detect-data-types" value="true" />
+    <preference name="exit-on-suspend" value="true" />
+    <!-- Set to true to allow a viewport meta tag to either disable or restrict the range of user scaling, which is enabled by default. Place a viewport such as the following in the HTML to disable scaling and fit content flexibly within the rendering WebView:  -->
+    <preference name="enableViewportScale" value="true" />
+    <!-- Set to true to wait until all content has been received before it renders to the screen. -->
+    <preference name="SuppressesIncrementalRendering" value="true" />
+    <!-- Controls the appearance of the small spinning icon in the status bar that indicates significant processor activity. -->
+    <preference name="TopActivityIndicator" value="gray" />
+    <!-- Set to cloud to allow web storage data to backup via iCloud. Set to local to allow only local backups via iTunes sync. Set to none prevent web storage backups. -->
+    <preference name="BackupWebStorage" value="cloud" />
+
+
+
+    <!-- Android -->
+    <preference name="android-build-tool" value="gradle" />
+    <preference name="android-minSdkVersion" value="10" />
+    <preference name="android-installLocation" value="internalOnly" />
+    <preference name="keepRunning" value="false"/>
+
+
+    <!-- stastusbar -->
+    <preference name="StatusBarOverlaysWebView" value="false" />
+    <preference name="StatusBarStyle" value="blacktranslucent" />
+    <preference name="StatusBarBackgroundColor" value="#0994DC" />
+
+    <!-- splashscreen -->
+    <preference name="SplashScreenDelay" value="3000" />
+    <preference name="SplashShowOnlyFirstTime" value="false" />
+    <preference name="AutoHideSplashScreen" value="true" />
+    <preference name="FadeSplashScreen" value="true"/>
+    <preference name="FadeSplashScreenDuration" value="500"/>
+    <preference name="ShowSplashScreenSpinner" value="false"/>
+
+
+    <feature name="http://api.phonegap.com/1.0/file"/>
+    <feature name="http://api.phonegap.com/1.0/network"/>
+    <feature name="http://api.phonegap.com/1.0/notification"/>
+    <feature name="http://api.phonegap.com/1.0/device"/>
+
+    <!-- плагины ищем на http://cordova.apache.org/plugins/ -->
+    <!-- образец вставки <plugin name="cordova-plugin-inappbrowser" source="npm" /> -->
+
+    <!-- This plugin provides a web browser view that displays when calling cordova.InAppBrowser.open() -->
+    <plugin name="cordova-plugin-inappbrowser" source="npm" />
+    <!-- This plugin provides an implementation of an old version of the Network Information API. It provides information about the device's cellular and wifi connection, and whether the device has an internet connection. -->
+    <plugin name="cordova-plugin-network-information" source="npm" />
+    <!-- This plugin is meant to ensure that console.log() is as useful as it can be. -->
+    <plugin name="cordova-plugin-console" source="npm" />
+    <!-- This plugin defines a global device object, which describes the device's hardware and software. -->
+    <plugin name="cordova-plugin-device" source="npm" />
+    <!-- This plugin provides access to some native dialog UI elements -->
+    <plugin name="cordova-plugin-dialogs" source="npm" />
+    <!-- This plugin is required to work with splash screens. This plugin displays and hides a splash screen during application launch. -->
+    <plugin name="cordova-plugin-splashscreen" source="npm" />
+    <!-- The StatusBar object provides some functions to customize the iOS and Android StatusBar. -->
+    <plugin name="cordova-plugin-statusbar" source="npm" />
+
+    <!-- при переходе phonegap-version на версии cli-* необходимо включить плагин whitelist и настроить доступ (параметры ниже)  -->
+    <!-- This plugin implements a whitelist policy for navigating the application webview on Cordova 4.0 -->
+    <plugin name="cordova-plugin-whitelist" source="npm" />
+
+    <access origin="*" subdomains="true"  />
+    <access origin="kccc.ru" subdomains="true"  />
+    <allow-navigation href="*" />
+    <!--  -->
+
+    <icon src="resources/logo/72.png" />
+
+    <platform name="ios">
+        <icon src="resources/logo/57.png" width="57" height="57" />
+        <icon src="resources/logo/144.png" width="144" height="144" />
+        <icon src="resources/logo/72.png" width="72" height="72" />
+        <icon src="resources/logo/114.png" width="114" height="114" />
+        <icon src="resources/logo/100.png" width="100" height="100" />
+        <icon src="resources/logo/60x60.png" width="60" height="60" />
+        <icon src="resources/logo/120.png" width="120" height="120" />
+        <icon src="resources/logo/180.png" width="180" height="180" />
+        <icon src="resources/logo/76.png" width="76" height="76" />
+        <icon src="resources/logo/152.png" width="152" height="152" />
+        <icon src="resources/logo/29.png" width="29" height="29" />
+        <icon src="resources/logo/58.png" width="58" height="58" />
+        <icon src="resources/logo/87.png" width="87" height="87" />
+        <icon src="resources/logo/40.png" width="40" height="40" />
+        <icon src="resources/logo/80.png" width="80" height="80" />
+        <splash src="resources/splash/1242x2208.png" width="1242" height="2208" />
+        <splash src="resources/splash/2208x1242.png" width="2208" height="1242" />
+        <splash src="resources/splash/750x1334.png" width="750" height="1334" />
+        <splash src="resources/splash/1334x750.png" width="1334" height="750" />
+        <splash src="resources/splash/640x1136.png" width="640" height="1136" />
+        <splash src="resources/splash/768x1004.png" width="768" height="1024" />
+        <splash src="resources/splash/1536x2048.png" width="1536" height="2048" />
+        <splash src="resources/splash/1136x640.png" width="1136" height="640" />
+        <splash src="resources/splash/1024x768.png" width="1024" height="768" />
+        <splash src="resources/splash/2048x1536.png" width="2048" height="1536" />
+        <splash src="resources/splash/640x960.png" width="640" height="960" />
+        <splash src="resources/splash/960x640.png" width="960" height="640" />
+        <splash src="resources/splash/320x480.png" width="320" height="480" />
+        <splash src="resources/splash/480x320.png" width="480" height="320" />
+    </platform>
+
+    <platform name="android">
+        <icon src="resources/logo/36.png" density="ldpi" />
+        <icon src="resources/logo/48.png" density="mdpi" />
+        <icon src="resources/logo/72.png" density="hdpi" />
+        <icon src="resources/logo/96.png" density="xhdpi" />
+        <icon src="resources/logo/144.png" density="xxhdpi" />
+        <icon src="resources/logo/192.png" density="xxxhdpi" />
+        <splash src="resources/splash/200x320.png" density="port-ldpi" />
+        <splash src="resources/splash/320x200.png" density="land-ldpi" />
+        <splash src="resources/splash/320x480.png" density="port-mdpi" />
+        <splash src="resources/splash/480x320.png" density="land-mdpi" />
+        <splash src="resources/splash/480x800.png" density="port-hdpi" />
+        <splash src="resources/splash/800x480.png" density="land-hdpi" />
+        <splash src="resources/splash/720x1280.png" density="port-xhdpi" />
+        <splash src="resources/splash/1280x720.png" density="land-xhdpi" />
+        <splash src="resources/splash/960x1600.png" density="port-xxhdpi" />
+        <splash src="resources/splash/1600x960.png" density="land-xxhdpi" />
+        <splash src="resources/splash/1280x1920.png" density="port-xxxhdpi" />
+        <splash src="resources/splash/1920x1280.png" density="land-xxxhdpi" />
+    </platform>
+
+</widget>
