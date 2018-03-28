@@ -1,0 +1,58 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<title>Дача.Сад.Огород</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+		<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/font-awesome/4.3.0/css/font-awesome.min.css" />
+		<link rel="stylesheet" href="//ajax.googleapis.com/ajax/libs/jquerymobile/1.4.5/jquery.mobile.min.css" />
+		<link rel="stylesheet" href="app/themes/nativeDroid/vendor/waves/waves.min.css" />
+		<link rel="stylesheet" href="app/themes/nativeDroid/vendor/wow/animate.css" />
+		<link rel="stylesheet" href="app/themes/nativeDroid/css/nativedroid2.css" />
+		<link rel="stylesheet" href="app/themes/nativeDroid/css/nativedroid2-custom.css" />
+
+		<meta name="mobile-web-app-capable" content="yes">
+	 	<meta name="apple-mobile-web-app-capable" content="yes" />
+    	<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+
+		<script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+		<script src="//code.jquery.com/ui/1.11.4/jquery-ui.min.js"></script>
+		<script src="//ajax.googleapis.com/ajax/libs/jquerymobile/1.4.5/jquery.mobile.min.js"></script>
+		<script src="app/themes/nativeDroid/vendor/waves/waves.min.js"></script>
+		<script src="app/themes/nativeDroid/vendor/wow/wow.min.js"></script>
+		<script src="app/themes/nativeDroid/js/nativedroid2.js"></script>
+		<script src="app/themes/nativeDroid/nd2settings.js"></script>
+
+
+		<!-- jDrupal -->
+		<script type="text/javascript" charset="utf-8" src="jdrupal.js"></script>
+
+		<!-- DrupalGap -->
+		<script type="text/javascript" charset="utf-8" src="bin/drupalgap.js"></script>
+		<script type="text/javascript" charset="utf-8" src="app/settings.js"></script>
+		<link rel="stylesheet" href="css/drupalgap.css" />
+
+	</head>
+	<body>
+
+		<div data-role="page">
+
+			<nd2-include data-src="app/themes/nativeDroid/examples/fragments/panel.left.html"></nd2-include>
+
+			<div data-role="panel" id="bottomsheet" data-animate="false" data-position='bottom' data-display="overlay">
+				<nd2-include data-src="app/themes/nativeDroid/examples/fragments/bottom.sheet.html"></nd2-include>
+			</div>
+
+			<div role="main" class="ui-content" data-inset="false" data-role="content">
+
+			</div>
+		</div>
+
+
+		<script type="text/javascript">
+			drupalgap_onload();
+		</script>
+
+	</body>
+</html>
