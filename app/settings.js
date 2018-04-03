@@ -8,6 +8,22 @@
 // Set to true to see console.log() messages. Set to false when publishing app.
 Drupal.settings.debug = false;
 
+
+/*********************|
+ * DrupalGap Settings |
+ *********************/
+
+// DrupalGap Mode (defaults to 'web-app')
+//  'web-app' - use this mode to build a web application for a browser window
+//  'phonegap' - use this mode to build a mobile application with phonegap
+drupalgap.settings.mode = 'web-app';
+// drupalgap.settings.mode = 'phonegap';
+
+// Language Files - locale/[language-code].json
+drupalgap.settings.locale = {
+    ru: {}
+};
+
 /****************************************|
  * Drupal Settings (provided by jDrupal) |
  ****************************************/
@@ -15,8 +31,8 @@ Drupal.settings.debug = false;
 /* DRUPAL PATHS */
 
 // Site Path (do not use a trailing slash)
-//Drupal.settings.site_path = 'http://dev.kccc.ru'; // e.g. http://www.example.com
-Drupal.settings.site_path = 'http://kccc.ru'; // e.g. http://www.example.com
+Drupal.settings.site_path = 'http://joy.kccc.local';
+// Drupal.settings.site_path = 'http://joy-magazin.ru';
 
 // Default Services Endpoint Path
 Drupal.settings.endpoint = 'drupalgap';
@@ -96,20 +112,6 @@ Drupal.settings.cache.views = {
     //expiration: 3600
 };
 
-/*********************|
- * DrupalGap Settings |
- *********************/
-
-// DrupalGap Mode (defaults to 'web-app')
-//  'web-app' - use this mode to build a web application for a browser window
-//  'phonegap' - use this mode to build a mobile application with phonegap
-//drupalgap.settings.mode = 'web-app';
-drupalgap.settings.mode = 'phonegap';
-
-// Language Files - locale/[language-code].json
-drupalgap.settings.locale = {
-    ru: {}
-};
 
 /*************|
  * Appearance |
