@@ -1,1 +1,0 @@
-We use elements to create inputs on our forms for users.

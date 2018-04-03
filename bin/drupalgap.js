@@ -1,4 +1,4 @@
-/*! drupalgap 2016-05-26 */
+/*! drupalgap 2017-10-18 */
 // Initialize the drupalgap json object.
 var drupalgap = drupalgap || drupalgap_init(); // Do not remove this line.
 
@@ -113,9 +113,6 @@ function drupalgap_init() {
  */
 function drupalgap_onload() {
   try {
-
-    // Remove any hash in case the app is restarting.
-    window.location.hash = '';
 
     // At this point, the Drupal object has been initialized by jDrupal and the
     // app/settings.js file was loaded in <head>. Let's add DrupalGap's modules
@@ -245,19 +242,31 @@ function _drupalgap_deviceready() {
  */
 function _drupalgap_deviceready_options() {
   try {
-    var page_options = arguments[0] ? arguments[0] : {};
+    var pageOptions = arguments[0] ? arguments[0] : {};
     return {
       success: function(result) {
+
+        // Set the connection and invoke hook_device_connected().
         drupalgap.connected = true;
-        // Call all hook_device_connected implementations then go to
-        // the front page.
         module_invoke_all('device_connected');
-        drupalgap_goto('', page_options);
+
+        // If there is a hash url present and it can be routed go directly to that page,
+        // otherwise go to the app's front page.
+        var path = '';
+        var hash = window.location.hash;
+        if (hash.indexOf('#') != -1) {
+          hash = hash.replace('#', '');
+          _drupalgap_goto_prepare_path(hash, true);
+          var routedPath = drupalgap_get_path_from_page_id(hash);
+          if (routedPath) { path = routedPath; }
+        }
+        drupalgap_goto(path, pageOptions);
+
       },
       error: function(jqXHR, textStatus, errorThrown) {
+
         // Build an informative error message and display it.
-        var msg = t('Failed connection to') + ' ' +
-          Drupal.settings.site_path;
+        var msg = t('Failed connection to') + ' ' + Drupal.settings.site_path;
         if (errorThrown != '') { msg += ' - ' + errorThrown; }
         msg += ' - ' + t('Check your device\'s connection and check that') +
           ' ' + Drupal.settings.site_path + ' ' + t('is online.');
@@ -288,7 +297,10 @@ function drupalgap_bootstrap() {
     drupalgap_theme_registry_build();
 
     // Attach device back button handler (Android).
-    document.addEventListener('backbutton', drupalgap_back, false);
+    document.addEventListener('backbutton', function(e) {
+      drupalgap_back();
+      e.preventDefault();
+    }, false);
   }
   catch (error) { console.log('drupalgap_bootstrap - ' + error); }
 }
@@ -341,6 +353,10 @@ function drupalgap_load_modules() {
               Drupal.modules[bundle][module_name].name = module_name;
               module = Drupal.modules[bundle][module_name];
             }
+
+          // If the module is already loaded via the index.html file, just continue.
+          if (typeof module.loaded !== 'undefined' && module.loaded) { continue; }
+
             // Determine module directory.
             var dir = drupalgap_modules_get_bundle_directory(bundle);
             module_base_path = dir + '/' + module.name;
@@ -369,17 +385,15 @@ function drupalgap_load_modules() {
                     url: modules_paths_object,
                     data: null,
                     success: function() {
-                      if (Drupal.settings.debug) { dpm(modules_paths_object); }
+                      if (Drupal.settings.debug) { console.log(modules_paths_object); }
                     },
                     dataType: 'script',
                     error: function(xhr, textStatus, errorThrown) {
-                      var msg = t('Failed to load module!') +
-                        ' (' + module.name + ')';
-                      dpm(msg);
-                      console.log(modules_paths_object);
-                      dpm(textStatus);
-                      dpm(errorThrown.message);
-                      drupalgap_alert(msg);
+                      console.log(
+                          t('Failed to load module!') + ' (' + module.name + ')',
+                          textStatus,
+                          errorThrown.message
+                      );
                     }
                 });
             }
@@ -420,7 +434,7 @@ function drupalgap_load_theme() {
       drupalgap_add_js(theme_path);
       // Call the theme's template_info implementation.
       var template_info_function = theme_name + '_info';
-      if (drupalgap_function_exists(template_info_function)) {
+      if (function_exists(template_info_function)) {
         var fn = window[template_info_function];
         drupalgap.theme = fn();
         // For each region in the name, set the 'name' value on the region JSON.
@@ -744,6 +758,8 @@ function drupalgap_format_plural(count, singular, plural) {
  */
 function drupalgap_function_exists(name) {
   try {
+    console.log('WARNING - drupalgap_function_exists() is deprecated. ' +
+      'Use function_exists() instead!');
     return function_exists(name);
   }
   catch (error) { console.log('drupalgap_function_exists - ' + error); }
@@ -945,7 +961,7 @@ function drupalgap_jqm_page_event_fire(event, callback, page_arguments) {
       if (arguments[3]) { key += '-' + arguments[3]; }
     }
     if ($.inArray(key, drupalgap.page.jqm_events) == -1 &&
-      drupalgap_function_exists(callback)) {
+      function_exists(callback)) {
       drupalgap.page.jqm_events.push(key);
       var fn = window[callback];
       if (page_arguments) {
@@ -995,19 +1011,20 @@ function drupalgap_jqm_page_events() {
  */
 function drupalgap_jqm_page_event_script_code(options) {
   try {
+    if (!options.page_id) { options.page_id = drupalgap_get_page_id(); }
+    if (!options.jqm_page_event) { options.jqm_page_event = 'pageshow'; }
     // Build the arguments to send to the event fire handler.
     var event_fire_args = '"' + options.jqm_page_event + '", "' +
       options.jqm_page_event_callback + '", ' +
       options.jqm_page_event_args;
     if (arguments[1]) { event_fire_args += ', "' + arguments[1] + '"'; }
     // Build the inline JS and return it.
-    var script_code = '<script type="text/javascript">' +
+    return '<script type="text/javascript">' +
       '$("#' + options.page_id + '").on("' +
         options.jqm_page_event + '", drupalgap_jqm_page_event_fire(' +
-          event_fire_args +
-        '));' +
+        event_fire_args +
+      '));' +
     '</script>';
-    return script_code;
   }
   catch (error) {
     console.log('drupalgap_jqm_page_event_script_code - ' + error);
@@ -1033,29 +1050,30 @@ function drupalgap_max_width() {
  * account object as the second argument to check access on a specific user.
  * Also, you may optionally pass in an entity object as the third argument, if
  * that entity needs to be passed along to an 'access_callback' handler.
- * @param {String} path
+ * @param {String} routerPath The router path of the destination.
+ * @param {String} path The destination path.
  * @return {Boolean}
  */
-function drupalgap_menu_access(path) {
+function drupalgap_menu_access(routerPath, path) {
   try {
 
     // User #1 is allowed to do anything, I mean anything.
     if (Drupal.user.uid == 1) { return true; }
     // Everybody else will not have access unless we prove otherwise.
     var access = false;
-    if (drupalgap.menu_links[path]) {
+    if (drupalgap.menu_links[routerPath]) {
       // Check to see if there is an access callback specified with the menu
       // link.
-      if (typeof drupalgap.menu_links[path].access_callback === 'undefined') {
+      if (typeof drupalgap.menu_links[routerPath].access_callback === 'undefined') {
         // No access call back specified, if there are any access arguments
         // on the menu link, then it is assumed they are user permission machine
         // names, so check that user account's role(s) for that permission to
         // grant access.
-        if (drupalgap.menu_links[path].access_arguments) {
-          if ($.isArray(drupalgap.menu_links[path].access_arguments)) {
-            for (var index in drupalgap.menu_links[path].access_arguments) {
-              if (!drupalgap.menu_links[path].access_arguments.hasOwnProperty(index)) { continue; }
-              var permission = drupalgap.menu_links[path].access_arguments[index];
+        if (drupalgap.menu_links[routerPath].access_arguments) {
+          if ($.isArray(drupalgap.menu_links[routerPath].access_arguments)) {
+            for (var index in drupalgap.menu_links[routerPath].access_arguments) {
+              if (!drupalgap.menu_links[routerPath].access_arguments.hasOwnProperty(index)) { continue; }
+              var permission = drupalgap.menu_links[routerPath].access_arguments[index];
               access = user_access(permission);
               if (access) { break; }
             }
@@ -1069,16 +1087,16 @@ function drupalgap_menu_access(path) {
       }
       else {
 
-        // An access callback function is specified for this path...
-        var function_name = drupalgap.menu_links[path].access_callback;
-        if (drupalgap_function_exists(function_name)) {
+        // An access callback function is specified for this routerPath...
+        var function_name = drupalgap.menu_links[routerPath].access_callback;
+        if (function_exists(function_name)) {
           // Grab the access callback function. If there are any access args
           // send them along, or just call the function directly.
           // access arguments.
           var fn = window[function_name];
-          if (drupalgap.menu_links[path].access_arguments) {
+          if (drupalgap.menu_links[routerPath].access_arguments) {
             var access_arguments =
-              drupalgap.menu_links[path].access_arguments.slice(0);
+              drupalgap.menu_links[routerPath].access_arguments.slice(0);
             // If we have an entity loaded, replace the first integer we find
             // in the page arguments with the loaded entity.
             if (arguments[2]) {
@@ -1090,6 +1108,12 @@ function drupalgap_menu_access(path) {
                     access_arguments[index] = entity;
                     break;
                   }
+              }
+            }
+            else {
+              // Replace any integer arguments with the corresponding path argument.
+              for (var i = 0; i < access_arguments.length; i++) {
+                if (is_int(access_arguments[i])) { access_arguments[i] = arg(i, path); }
               }
             }
             return fn.apply(null, Array.prototype.slice.call(access_arguments));
@@ -1104,7 +1128,7 @@ function drupalgap_menu_access(path) {
       }
     }
     else {
-      console.log('drupalgap_menu_access - path (' + path + ') does not exist');
+      console.log('drupalgap_menu_access - routerPath (' + routerPath + ') does not exist');
     }
     return access;
   }
@@ -1250,15 +1274,29 @@ function drupalgap_set_title(title) {
 }
 
 /**
+ * Returns true if the loader spinner is enabled, false otherwise. Defaults to true if no config for it is present.
+ * @returns {Boolean}
+ */
+function drupalgap_loader_enabled() {
+  if (!drupalgap.settings.loader) { drupalgap.settings.loader = {}; }
+  return typeof drupalgap.settings.loader.enabled !== 'undefined' ?
+      drupalgap.settings.loader.enabled : true;
+}
+
+/**
+ * Toggle on or off the loader spinner, send true to turn it on, false to turn it off.
+ * @param {Boolean} enable
+ */
+function drupalgap_loader_enable(enable) {
+  drupalgap.settings.loader.enabled = enable;
+}
+
+/**
  * Implements hook_services_preprocess().
  * @param {Object} options
  */
 function drupalgap_services_preprocess(options) {
-  try {
-    // Show the loading icon.
-    drupalgap_loading_message_show();
-  }
-  catch (error) { console.log('drupalgap_services_preprocess - ' + error); }
+  if (drupalgap_loader_enabled()) { drupalgap_loading_message_show(); }
 }
 
 /**
@@ -1267,11 +1305,7 @@ function drupalgap_services_preprocess(options) {
  * @param {Object} result
  */
 function drupalgap_services_postprocess(options, result) {
-  try {
-    // Hide the loading icon.
-    drupalgap_loading_message_hide();
-  }
-  catch (error) { console.log('drupalgap_services_postprocess - ' + error); }
+  if (drupalgap_loader_enabled()) { drupalgap_loading_message_hide(); }
 }
 
 /**
@@ -1595,7 +1629,8 @@ function theme_autocomplete(variables) {
 
     // We need a hidden input to hold the value. If a default value
     // was provided by a form element, use it.
-    var hidden_attributes = { id: id };
+    var hidden_attributes = {};
+    $.extend(hidden_attributes, variables.attributes);
     if (
       variables.element &&
       typeof variables.element.default_value !== 'undefined'
@@ -1708,7 +1743,10 @@ function _theme_autocomplete(list, e, data, autocomplete_id) {
     // Clear the list.
     $ul.html('');
     // If a value has been input, start the autocomplete search.
-    if (value && value.length > 0) {
+    if (value && value.length > 0 && !autocomplete._searching) {
+
+      autocomplete._searching = true;
+
       // Show the loader icon.
       $ul.html('<li><div class="ui-loader">' +
         '<span class="ui-icon ui-icon-loading"></span>' +
@@ -1720,6 +1758,8 @@ function _theme_autocomplete(list, e, data, autocomplete_id) {
       _theme_autocomplete_success_handlers[autocomplete_id] = function(
         _autocomplete_id, result_items, _wrapped, _child) {
         try {
+
+          autocomplete._searching = false;
 
           // If there are no results, and then if an empty callback handler was
           // provided, call it.
@@ -1819,9 +1859,11 @@ function _theme_autocomplete(list, e, data, autocomplete_id) {
                 if (wrapped) { result_items = results[results.view.root]; }
                 else { result_items = results; }
 
-                // Finally call the sucess handler.
+                // Finally call the success handler. Note, since we route custom Drupal hook_menu() item JSON page
+                // callbacks through this Views handler, we don't attempt to send along the view to the handler. Hack.
                 var fn = _theme_autocomplete_success_handlers[autocomplete_id];
-                fn(autocomplete_id, result_items, wrapped, results.view.child);
+                if (results.view) { fn(autocomplete_id, result_items, wrapped, results.view.child); }
+                else { fn(autocomplete_id, result_items, wrapped); }
               }
           });
           break;
@@ -1833,7 +1875,7 @@ function _theme_autocomplete(list, e, data, autocomplete_id) {
           var field_settings =
             autocomplete.field_info_field.settings;
           var index_resource = field_settings.target_type + '_index';
-          if (!drupalgap_function_exists(index_resource)) {
+          if (!function_exists(index_resource)) {
             console.log('WARNING - _theme_autocomplete - ' +
               index_resource + '() does not exist!'
             );
@@ -1878,9 +1920,8 @@ function _theme_autocomplete(list, e, data, autocomplete_id) {
               entity_primary_key_title(autocomplete.entity_type)
             ];
             if (autocomplete.entity_type == 'taxonomy_term') {
-              if (autocomplete.vid) {
-                query.parameters['vid'] = autocomplete.vid;
-              }
+              if (autocomplete.vid) { query.parameters['vid'] = autocomplete.vid; }
+              if (autocomplete.parent) { query.parameters['parent'] = autocomplete.parent; }
             }
             query.fields = fields;
             query.parameters[autocomplete.filter] = '%' + value + '%';
@@ -1983,7 +2024,7 @@ function _theme_autocomplete_click(id, item, autocomplete_id) {
     // Now fire the item onclick handler, if one was provided.
     if (
       _theme_autocomplete_variables[autocomplete_id].item_onclick &&
-      drupalgap_function_exists(
+      function_exists(
         _theme_autocomplete_variables[autocomplete_id].item_onclick
       )
     ) {
@@ -2009,7 +2050,6 @@ function _theme_autocomplete_set_default_value_label(options) {
     console.log('_theme_autocomplete_set_default_value_label - ' + error);
   }
 }
-
 
 /**
  * Given a block delta, this will return the corresponding
@@ -2052,7 +2092,7 @@ function drupalgap_block_load(delta) {
 function drupalgap_block_render(region, current_path, block_delta,
   block_settings, block_counts) {
   try {
-    var html = '';
+    var content = '';
     // Check the block's visibility settings. If an access_callback
     // function is specified on the block's settings, we'll call that
     // to determine the visibility, otherwise we'll fall back to the
@@ -2060,7 +2100,7 @@ function drupalgap_block_render(region, current_path, block_delta,
     var render_block = false;
     if (
       block_settings.access_callback &&
-      drupalgap_function_exists(block_settings.access_callback)
+      function_exists(block_settings.access_callback)
     ) {
       var fn = window[block_settings.access_callback];
       render_block = fn({
@@ -2086,7 +2126,7 @@ function drupalgap_block_render(region, current_path, block_delta,
         block_counts.block_menu_count++;
       }
       if (block) {
-        html = module_invoke(
+        content = module_invoke(
           block.module,
           'block_view',
           block_delta,
@@ -2094,7 +2134,7 @@ function drupalgap_block_render(region, current_path, block_delta,
         );
       }
     }
-    return html;
+    return typeof content === 'string' ? content : drupalgap_render(content);
   }
   catch (error) { console.log('drupalgap_block_render - ' + error); }
 }
@@ -2346,10 +2386,7 @@ function drupalgap_link_get_class(link) {
  * @return {String}
  */
 function drupalgap_path_get() {
-  try {
-    var path = drupalgap.path;
-    return path;
-  }
+  try { return drupalgap.path; }
   catch (error) { console.log('drupalgap_path_get - ' + error); }
 }
 
@@ -2367,10 +2404,7 @@ function drupalgap_path_set(path) {
  * @return {String}
  */
 function drupalgap_router_path_get() {
-  try {
-    var router_path = drupalgap.router_path;
-    return router_path;
-  }
+  try { return drupalgap.router_path; }
   catch (error) { console.log('drupalgap_router_path_get - ' + error); }
 }
 
@@ -2381,6 +2415,47 @@ function drupalgap_router_path_get() {
 function drupalgap_router_path_set(router_path) {
   try { drupalgap.router_path = router_path; }
   catch (error) { console.log('drupalgap_router_path_set - ' + error); }
+}
+
+/**
+ * Returns the path used for a given page id. Essentially a reverse path look up, given a page id.
+ * @param  {String} page_id
+ * @returns {String|null}
+ */
+function drupalgap_get_path_from_page_id(page_id) {
+  if (!page_id) { page_id = drupalgap_get_page_id(); }
+
+  // SUPPORTS THE FOLLOWING PATH PATTERNS:
+  //    *           foo
+  //    */*         foo/bar, node/123
+  //    *-*/*       foo-bar/chew, foo-bar/123
+  //    */*/*/...   foo/bar/chew, foo/123/bar, foo/bar/chew/you, etc
+
+  // First check to see if there is an exact router match, if there is use it. If there is no exact match, split the
+  // page id by underscore into arguments so we can attempt to lookup a potential router.
+  if (drupalgap.menu_links[page_id]) { return drupalgap.menu_links[page_id].path; }
+  else {
+    var args = page_id.split('_');
+    if (args.length < 2) { return null; }
+    var slashPath = '';
+    var hyphenPath = '';
+    for (var i = 0; i < args.length; i++) {
+      slashPath += args[i];
+      if (i != args.length -1) { slashPath += '/'; }
+      hyphenPath += args[i];
+      if (i == 0) { hyphenPath += '-'; }
+      else if (i != 0 && i != args.length -1) { hyphenPath += '/'; }
+    }
+    var potentialPaths = [slashPath, hyphenPath];
+    for (var j = 0; j < potentialPaths.length; j++) {
+      var routerPath = drupalgap_get_menu_link_router_path(potentialPaths[j]);
+      if (!drupalgap.menu_links[routerPath]) { continue; }
+      return potentialPaths[j];
+    }
+  }
+
+  return null;
+
 }
 
 /**
@@ -2476,6 +2551,2753 @@ function t(str) {
   return str;
 }
 
+
+// Holds onto any query string during the page go process.
+var _drupalgap_goto_query_string = null;
+
+/**
+ * Given a path, this will change the current page in the app.
+ * @param {String} path
+ * @return {*}
+ */
+function drupalgap_goto(path) {
+  try {
+
+    // Extract any incoming options, set any defaults that weren't provided,
+    // then populate the global page options variable.
+    var options = {};
+    if (arguments[1]) {
+      options = arguments[1];
+      if (typeof options.form_submission === 'undefined') {
+        options.form_submission = false;
+      }
+    }
+    drupalgap.page.options = options;
+
+    // Prepare the path.
+    path = _drupalgap_goto_prepare_path(path, true);
+    if (!path) { return false; }
+
+    // Invoke all implementations of hook_drupalgap_goto_preprocess().
+    module_invoke_all('drupalgap_goto_preprocess', path);
+
+    // Determine the router path.
+    var router_path = drupalgap_get_menu_link_router_path(path);
+
+    // Make sure we have a menu link item that can handle this router path,
+    // otherwise we'll goto the 404 page.
+    if (!drupalgap.menu_links[router_path]) {
+      // Is anyone trying to handle this 404?
+      var new_path = false;
+      var invocation_results = module_invoke_all('404', router_path);
+      if (invocation_results) {
+        for (var index in invocation_results) {
+            if (!invocation_results.hasOwnProperty(index)) { continue; }
+            var result = invocation_results[index];
+            if (result !== false) {
+              new_path = result;
+              break;
+            }
+        }
+      }
+      // If a 404 handler provided a new path use it, otherwise just use the
+      // system 404 page. Either way, update the router path before continuing
+      // with a normal page build.
+      if (new_path) { path = new_path; }
+      else { path = '404'; }
+      router_path = drupalgap_get_menu_link_router_path(path);
+    }
+
+    // Make sure the user has access to this router path, if they don't send
+    // them to the 401 page.
+    // @TODO - for now we're going to skip access checks on local tasks, since
+    // they are covered by menu_block_view(), but if someone were to navigate
+    // directly to e.g. a node's edit page, they would be able to see the page.
+    // Of course Drupal would actually prevent them from updating the node on
+    // the live site, but nonetheless this needs to be fixed. It's a tough issue
+    // though and related to https://github.com/signalpoint/DrupalGap/issues/257
+    if (
+      drupalgap.menu_links[router_path].type != 'MENU_DEFAULT_LOCAL_TASK' &&
+      drupalgap.menu_links[router_path].type != 'MENU_LOCAL_TASK' &&
+      !drupalgap_menu_access(router_path, path)
+    ) {
+      path = '401';
+      router_path = drupalgap_get_menu_link_router_path(path);
+    }
+
+    // If the new router path is the same as the current router path and the new
+    // path is the same as the current path, we may need to cancel the
+    // navigation attempt (i.e. don't go anywhere), unless it is a
+    // form submission, then continue.
+    if (
+      router_path == drupalgap_router_path_get() &&
+      path == drupalgap_path_get()
+    ) {
+      // If it's a form submission, we'll continue onward...
+      if (options.form_submission) { }
+
+      // If we're reloading the current page, we need to set aside this path
+      // and navigate to the system's _reload page, which will then handle the
+      // actual reloading of the page.
+      // @see system_drupalgap_goto_post_process()
+      else if (options.reloadPage) {
+        _system_reload_page = path;
+        path = '_reload';
+        router_path = drupalgap_get_menu_link_router_path(path);
+      }
+
+      // Otherwise, just stop the navigation attempt.
+      else { return false; }
+
+    }
+
+    // Grab the page id.
+    var page_id = drupalgap_get_page_id(path);
+
+    // Return if we are trying to go to the path we are already on, unless this
+    // was a form submission, then we'll let the page rebuild itself. For
+    // accuracy we compare the jQM active page url with the destination page
+    // id.
+    // @todo - this boolean doesn't match the comment description of the code
+    // block, i.e. the form_submission check is opposite of what it says
+    if (drupalgap_jqm_active_page_url() == page_id && options.form_submission) {
+      // Clear any messages from the page before returning.
+      drupalgap_clear_messages();
+      return false;
+    }
+
+    // @TODO when drupalgap_goto() is called during the bootstrap, we shouldn't
+    // put the path onto the back_path array.
+
+    // Save the back path.
+    var back_paths_to_ignore = ['user/logout', '_reload'];
+    if (!in_array(drupalgap_path_get())) {
+      drupalgap.back_path.push(drupalgap_path_get());
+    }
+
+    // Set the current menu path to the path input.
+    drupalgap_path_set(path);
+
+    // Set the drupalgap router path.
+    drupalgap_router_path_set(router_path);
+
+    // If the page is already in the DOM and we're asked to reload it, then
+    // remove the page and let it rebuild itself. If we're not reloading the
+    // page and we're not in the middle of a form submission, prevent the page
+    // from processing then change to it.
+    if (drupalgap_page_in_dom(page_id)) {
+
+      // If there are any hook_menu() item options for this router path, bring
+      // them into the current options without overwriting any existing values.
+      if (drupalgap.menu_links[router_path].options) {
+        options = $.extend(
+          {},
+          drupalgap.menu_links[router_path].options,
+          options
+        );
+      }
+
+      // Reload the page? If so, remove the page from the DOM, delete the
+      // reloadPage option, then set the reloadingPage option to true so others
+      // down the line will know the page is reloading. We can't pass along the
+      // actual reloadPage option since it may collide with jQM later on. We
+      // have to use 'force' when removing the page from the DOM since DG won't
+      // remove it since it thinks we are already on the page, so it won't
+      // remove it.
+      if (typeof options.reloadPage !== 'undefined' && options.reloadPage) {
+        // @TODO we may need to leave the query ONLY if the above call to
+        // _drupalgap_goto_prepare_path() yielded a query string, otherwise we
+        // may be leaving unwanted queries in _GET()!
+        var leaveQuery = _drupalgap_goto_query_string ? true : false;
+        drupalgap_remove_page_from_dom(page_id, {
+          force: true,
+          leaveQuery: leaveQuery
+        });
+        delete options.reloadPage;
+        options.reloadingPage = true;
+      }
+      else if (!options.form_submission) {
+        drupalgap_clear_messages();
+        _drupalgap_goto_query_string = null;
+        drupalgap.page.process = false;
+        // @TODO changePage has been deprecated as of jQM 1.4.0 and will be
+        // removed in 1.50.
+        // @see https://api.jquerymobile.com/jQuery.mobile.changePage/
+        $.mobile.changePage('#' + page_id, options);
+        module_invoke_all('drupalgap_goto_post_process', path);
+        return;
+      }
+    }
+    else if (typeof options.reloadPage !== 'undefined' && options.reloadPage) {
+      // The page is not in the DOM, and we're being asked to reload it, so
+      // we'll just delete the reloadPage option.
+      delete options.reloadPage;
+    }
+
+    // Generate the page.
+    drupalgap_goto_generate_page_and_go(path, page_id, options, drupalgap.menu_links[router_path]);
+  }
+  catch (error) { console.log('drupalgap_goto - ' + error); }
+}
+
+/**
+ * Generate a JQM page by running it through the theme then attach the
+ * page to the <body> of the document, then change to the page. Remember,
+ * the rendering of the page does not take place here, that is covered by
+ * the pagebeforechange event in theme.inc.js which happens after we change
+ * the page here.
+ * @param {String} path
+ * @param {String} page_id
+ * @param {Object} options
+ * @param {Object} menu_link The menu link object from drupalgap.menu_links.
+ */
+function drupalgap_goto_generate_page_and_go(path, page_id, options, menu_link) {
+  try {
+
+    // First see if the theme implements hook_page_tpl_html() and use its string for the page placeholders,
+    // otherwise use the file read method from DrupalGap's early days, and notify the developer to upgrade
+    // their theme.
+    var html = '';
+    var themeName = drupalgap.settings.theme;
+    var pageTplHtmlFunctionName = themeName + '_page_tpl_html';
+    if (function_exists(pageTplHtmlFunctionName)) { html = window[pageTplHtmlFunctionName](); }
+    else {
+      var pageTemplatePath = path_to_theme() + '/page.tpl.html';
+      console.log('@deprecated: ' + pageTemplatePath + ' - use ' + pageTplHtmlFunctionName + '() in ' +
+          themeName + '.js instead, see: http://docs.drupalgap.org/7/Themes/Create_a_Custom_Theme');
+      html = drupalgap_file_get_contents(pageTemplatePath);
+    }
+
+    // Reset the internal query string.
+    _drupalgap_goto_query_string = null;
+
+    // If options wasn't set, set it as an empty JSON object.
+    if (typeof options === 'undefined') { options = {}; }
+
+    // Add page to DOM.
+    drupalgap_add_page_to_dom({
+      page_id: page_id,
+      html: html,
+      menu_link: menu_link
+    });
+
+    // Setup change page options if necessary.
+    if (drupalgap_path_get() == path && options.form_submission) {
+      options.allowSamePageTransition = true;
+    }
+
+    // Let's change to the page. Web apps and the ripple emulator do not
+    // seem to like the 'index.html' prefix, so we'll remove that.
+    var destination = 'index.html#' + page_id;
+    if (
+        drupalgap.settings.mode != 'phonegap' ||
+        typeof parent.window.ripple === 'function'
+    ) { destination = '#' + page_id; }
+    $.mobile.changePage(destination, options); // @see the pagebeforechange handler in page.inc.js
+
+    // Invoke all implementations of hook_drupalgap_goto_post_process().
+    module_invoke_all('drupalgap_goto_post_process', path);
+  }
+  catch (error) { console.log('drupalgap_goto_generate_page_and_go - ' + error); }
+}
+
+/**
+ * Prepares a drupalgap page path.
+ * @deprecated Use _drupalgap_goto_prepare_path() instead.
+ * @param {String} path
+ * @return {String}
+ */
+function drupalgap_goto_prepare_path(path) {
+  try {
+    console.log('WARNING - drupalgap_goto_prepare_path() is deprecated, ' +
+      'use _drupalgap_goto_prepare_path() instead!');
+    return _drupalgap_goto_prepare_path(path);
+  }
+  catch (error) { console.log('drupalgap_goto_prepare_path - ' + error); }
+}
+
+/**
+ * An internal function used to prepare the path for menu routing. An optional
+ * second parameter (boolean) may be passed in, and if it is set to true it will
+ * process any _GET query string parameters.
+ * @param {String} path
+ * @return {String}
+ */
+function _drupalgap_goto_prepare_path(path) {
+  try {
+
+    // Pull out any query string parameters and populate them into _GET, if we
+    // were instructed to do so. Hold onto a global copy of the query string
+    // for page go processing.
+    if (typeof arguments[1] !== 'undefined' && arguments[1]) {
+      var pos = path.indexOf('?');
+      if (pos != -1 && pos != path.length - 1) {
+        var query = path.substr(pos + 1, path.length - pos);
+        _drupalgap_goto_query_string = query;
+        path = path.substr(0, pos);
+        var parts = query.split('&');
+        for (var i = 0; i < parts.length; i++) {
+          pos = parts[i].indexOf('=');
+          if (pos == -1) { continue; }
+          query = parts[i].split('=');
+          if (query.length != 2) { continue; }
+          _GET(
+            decodeURIComponent(query[0]),
+            decodeURIComponent(query[1]),
+            path
+          );
+        }
+      }
+    }
+
+    // If the path is an empty string, change it to the front page path.
+    if (path == '') {
+      if (!drupalgap.settings.front) {
+        drupalgap_alert(
+          'drupalgap_goto_prepare_path - ' +
+          t('no front page specified in settings.js!')
+        );
+        return false;
+      }
+      else { path = drupalgap.settings.front; }
+    }
+
+    // Change 'user' to 'user/login' for anonymous users, or change it to e.g.
+    // 'user/123' for authenticated users.
+    else if (path == 'user') {
+      if (Drupal.user.uid != 0) { path = 'user/' + Drupal.user.uid; }
+      else { path = 'user/login'; }
+    }
+
+    // Finally return the path.
+    return path;
+
+  }
+  catch (error) { console.log('drupalgap_goto_prepare_path - ' + error); }
+}
+
+/**
+ * Change the page to the previous page.
+ */
+function drupalgap_back() {
+  try {
+    var active_page_id = $('.ui-page-active').attr('id');
+    if (active_page_id == drupalgap.settings.front) {
+      var msg = t('Exit') + ' ' + drupalgap.settings.title + '?';
+      if (drupalgap.settings.exit_message) {
+        msg = drupalgap.settings.exit_message;
+      }
+      drupalgap_confirm(msg, {
+          confirmCallback: _drupalgap_back_exit
+      });
+    }
+    else if (active_page_id == '_drupalgap_splash') { return; }
+    else { _drupalgap_back(); }
+  }
+  catch (error) { console.log('drupalgap_back - ' + error); }
+}
+
+/**
+ * The DrupalGap "Back to the Future" function goes forward to the previous page by first
+ * removing that page from the DOM, then going "forward" to that page using drupalgap_goto()
+ * with a reloadPage option set to true.
+ */
+function drupalgap_back_2tf() {
+  var back = drupalgap_back_path();
+  drupalgap_remove_page_from_dom(drupalgap_get_page_id(back));
+  drupalgap_goto(back, { reloadPage: true });
+}
+
+/**
+ * Returns the previous page path, or the front page if there is none.
+ * @returns {String}
+ */
+function drupalgap_back_path() {
+  return drupalgap.back_path.length ?
+      drupalgap.back_path[drupalgap.back_path.length - 1] :
+      drupalgap.settings.front;
+}
+
+/**
+ * An internal function used to change the page to the previous page.
+ */
+function _drupalgap_back() {
+  try {
+    // @WARNING - any changes here (except the history.back() call) need to be
+    // reflected into the window "navigate" handler below
+    drupalgap.back = true;
+
+    // Properly handle iOS9 back button clicks, and default back button clicks.
+    if (typeof device !== 'undefined' && device.platform === "iOS" && parseInt(device.version) === 9) {
+      $.mobile.back();
+    }
+    else { history.back(); }
+
+    // Update the path and router path.
+    var from = drupalgap_path_get();
+    drupalgap_path_set(drupalgap.back_path.pop());
+    var to = drupalgap_path_get();
+    drupalgap_router_path_set(drupalgap_get_menu_link_router_path(to));
+    module_invoke_all('drupalgap_back', from, to);
+
+  }
+  catch (error) { console.log('_drupalgap_back - ' + error); }
+}
+
+/**
+ * An internal function used to exit the app when the back button is clicked.
+ * @param {Number} button Which button was pressed.
+ */
+function _drupalgap_back_exit(button) {
+  try {
+    button === 1 ? navigator.app.exitApp() : '';
+  }
+  catch (error) { console.log('_drupalgap_back_exit - ' + error); }
+}
+
+$(window).on('navigate', function(event, data) {
+
+    // If we're already moving backwards (aka from a "soft" back button click),
+    // then don't do anything.
+    if (drupalgap.back) { return; }
+
+    // In web-app mode, clicking the back button on your browser (or Android
+    // device browser), does not actually fire drupalgap_back(), so we mimic
+    // it here, but skip the history.back() call because that's already
+    // happened via the hardware button.
+    if (drupalgap.settings.mode == 'web-app') {
+      // Grab the direction we're travelling.
+      // back, forward (or undefined, aka moving from splash to front page)
+      var direction = data.state.direction;
+      if (direction == 'back' && drupalgap.back_path.length > 0) {
+        // @WARNING - any changes here should be reflected into _drupalgap_back().
+        drupalgap.back = true;
+        // Update the path and router path.
+        var from = drupalgap_path_get();
+        drupalgap_path_set(drupalgap.back_path.pop());
+        var to = drupalgap_path_get();
+        drupalgap_router_path_set(drupalgap_get_menu_link_router_path(to));
+        module_invoke_all('drupalgap_back', from, to);
+      }
+    }
+
+});
+
+
+/**
+ * Execute the page callback associated with the current path and return its
+ * content.
+ * @return {Object}
+ */
+function menu_execute_active_handler() {
+  try {
+
+    // Determine the path and then grab the page id.
+    var path = null;
+    if (arguments[0]) { path = arguments[0]; }
+    if (!path) { path = drupalgap_path_get(); }
+    var page_id = drupalgap_get_page_id(path);
+
+    // @todo - Make sure the user has access to this DrupalGap menu path!
+
+    // Get the router path.
+    var router_path = drupalgap_router_path_get();
+
+    if (!router_path) { return; }
+
+    // Call the page call back for this router path and send along any
+    // arguments.
+    var function_name = drupalgap.menu_links[router_path].page_callback;
+    var page_arguments = [];
+    if (function_exists(function_name)) {
+
+      // Grab the page callback function and get ready to build the html.
+      var fn = window[function_name];
+      var content = '';
+
+      // Are there any arguments to send to the page callback?
+      if (drupalgap.menu_links[router_path].page_arguments) {
+        // For each page argument, if the argument is an integer, grab the
+        // corresponding arg(#), otherwise just push the arg onto the page
+        // arguments. Then try to prepare any entity that may be present in
+        // the url so the entity is sent via the page arguments to the page
+        // callback, instead of just sending the integer.
+        var args = arg(null, path);
+        for (var index in drupalgap.menu_links[router_path].page_arguments) {
+            if (!drupalgap.menu_links[router_path].page_arguments.hasOwnProperty(index)) { continue; }
+            var object = drupalgap.menu_links[router_path].page_arguments[index];
+            if (is_int(object) && args[object]) {
+              page_arguments.push(args[object]);
+            }
+            else { page_arguments.push(object); }
+        }
+
+        // Call the page callback function with the page arguments.
+        content = fn.apply(null, Array.prototype.slice.call(page_arguments));
+      }
+      else {
+        // There are no arguments, just return the page callback result.
+        content = fn();
+      }
+
+      // If the content came back as a string, convert it to a render object
+      // so any jQM page events can be attached to the content if necessary.
+      if (typeof content === 'string') {
+        content = {
+          content: {
+            markup: content
+          }
+        };
+      }
+
+      // Clear out any previous jQM page events, then if there are any jQM
+      // event callback functions attached to the menu link for this page, set
+      // each event up to be fired with inline JS on the page. We pass along
+      // any page arguments to the jQM event handler function.
+      drupalgap.page.jqm_events = [];
+      var jqm_page_events = drupalgap_jqm_page_events();
+      var jqm_page_event_args = null;
+      if (page_arguments.length > 0) {
+        jqm_page_event_args = JSON.stringify(page_arguments);
+      }
+      for (var i = 0; i < jqm_page_events.length; i++) {
+        if (drupalgap.menu_links[router_path][jqm_page_events[i]]) {
+          var jqm_page_event = jqm_page_events[i];
+          var jqm_page_event_callback =
+            drupalgap.menu_links[router_path][jqm_page_event];
+          if (function_exists(jqm_page_event_callback)) {
+            var options = {
+              'page_id': page_id,
+              'jqm_page_event': jqm_page_event,
+              'jqm_page_event_callback': jqm_page_event_callback,
+              'jqm_page_event_args': jqm_page_event_args
+            };
+            content[jqm_page_event] = {
+              markup: drupalgap_jqm_page_event_script_code(options)
+            };
+          }
+          else {
+            console.log(
+              'menu_execute_active_handler (' + path + ') - the jQM ' +
+              jqm_page_event + ' call back function ' +
+              jqm_page_event_callback + ' does not exist!'
+            );
+          }
+        }
+      }
+
+      // Add a pageshow handler for the page title.
+      if (typeof content === 'object') {
+        var options = {
+          'page_id': page_id,
+          'jqm_page_event': 'pageshow',
+          'jqm_page_event_callback': '_drupalgap_page_title_pageshow',
+          'jqm_page_event_args': jqm_page_event_args
+        };
+        content['drupalgap_page_title_pageshow'] = {
+          markup: drupalgap_jqm_page_event_script_code(options)
+        };
+      }
+
+      // And finally return the content.
+      return content;
+    }
+    else {
+      // No page call back specified.
+      console.log(
+        'menu_execute_active_handler - no page callback (' + router_path + ')'
+      );
+      console.log(JSON.stringify(drupalgap.menu_links[router_path]));
+    }
+  }
+  catch (error) {
+    console.log('menu_execute_active_handler(' + path + ') - ' + error);
+  }
+}
+
+/**
+ * Gets a router item.
+ * @return {Object}
+ */
+function menu_get_item() {
+  try {
+    var path = null;
+    var router_item = null;
+    if (arguments[0]) { path = arguments[0]; }
+    if (arguments[1]) { router_item = arguments[1]; }
+    if (path && drupalgap.menu_links[path]) {
+      return drupalgap.menu_links[path];
+    }
+    else { return null; }
+  }
+  catch (error) { console.log('menu_get_item - ' + error); }
+}
+
+/**
+ * Returns default menu item options.
+ * @return {Object}
+ */
+function menu_item_default_options() {
+    return { attributes: menu_item_default_attributes() };
+}
+
+/**
+ * Returns default menu item attributes.
+ * @return {Object}
+ */
+function menu_item_default_attributes() {
+    return { 'class': '' };
+}
+
+/**
+ * Returns an array containing the names of system-defined (default) menus.
+ * @return {Object}
+ */
+function menu_list_system_menus() {
+  try {
+    var system_menus = {
+      'user_menu_anonymous': {
+        'title': t('User menu authenticated')
+      },
+      'user_menu_authenticated': {
+        'title': t('User menu authenticated')
+      },
+      'main_menu': {
+        'title': t('Main menu')
+      },
+      'primary_local_tasks': {
+        'title': t('Primary Local Tasks')
+      }
+    };
+    // Add the menu_name to each menu as a property.
+    for (var menu_name in system_menus) {
+        if (!system_menus.hasOwnProperty(menu_name)) { continue; }
+        var menu = system_menus[menu_name];
+        menu.menu_name = menu_name;
+    }
+    return system_menus;
+  }
+  catch (error) { console.log('menu_list_system_menus - ' + error); }
+}
+
+/**
+ * Collects and alters the menu definitions.
+ */
+function menu_router_build() {
+  //  Calls all hook_menu implementations and builds a collection of menu links.
+  try {
+    // For each module that implements hook_menu, iterate over each of the
+    // menu links defined by the hook, then add each menu item to
+    // drupalgap.menu_links keyed by the path.
+    var modules = module_implements('menu');
+    var function_name;
+    var fn;
+    var menu_links;
+    for (var index in modules) {
+        if (!modules.hasOwnProperty(index)) { continue; }
+        var module = modules[index];
+        // Determine the hook function name, grab the function, and call it
+        // to retrieve the hook's menu links.
+        function_name = module + '_menu';
+        fn = window[function_name];
+        menu_links = fn();
+        // Iterate over each item.
+        for (var path in menu_links) {
+            if (!menu_links.hasOwnProperty(path)) { continue; }
+            var menu_item = menu_links[path];
+            // Attach module name to item.
+            menu_item.module = module;
+            // Set a default type for the item if one isn't provided.
+            if (typeof menu_item.type === 'undefined') {
+              menu_item.type = 'MENU_NORMAL_ITEM';
+            }
+            // Set default options and attributes if none have been provided.
+            // @TODO - Now that we are doing this here, there may be a few
+            // places throughout the code that were checking for these
+            // undefined objects that will no longer need to be checked.
+            if (typeof menu_item.options === 'undefined') {
+              menu_item.options = menu_item_default_options();
+            }
+            else if (typeof menu_item.options.attributes === 'undefined') {
+              menu_item.options.attributes = menu_item_default_attributes();
+            }
+            // Make the path available as a property in the menu link.
+            menu_item.path = path;
+            // Determine any parent, sibling, and child paths for the item.
+            drupalgap_menu_router_build_menu_item_relationships(
+              path,
+              menu_item
+            );
+            // Attach item to menu links.
+            drupalgap.menu_links[path] = menu_item;
+        }
+    }
+  }
+  catch (error) { console.log('menu_router_build - ' + error); }
+}
+
+/**
+ * Given a menu link path, this determines and returns the router path as a
+ * string.
+ * @param {String} path
+ * @return {String}
+ */
+function drupalgap_get_menu_link_router_path(path) {
+  try {
+
+    // @TODO - Why is this function called twice sometimes? E.G. via an MVC item
+    // view item/local_users/user/0, this function gets called twice in one page
+    // load, that can't be good.
+
+    // @TODO - this function has a limitation in the types of menu paths it can
+    // handle, for example a menu path of 'collection/%/%/list' with a path of
+    // 'collection/local_users/user/list' can't find eachother. So we had to
+    // change the mvc_menu() item path to be collection/list/%/%.
+
+    // @TODO - each time this function is called, we should create a static
+    // record of the result router path, keyed by the incoming path, that way
+    // this heavy function can be called more often with less resource.
+
+    // Is this path defined in drupalgap.menu_links? If it is, use it's router
+    // path if it is defined, otherwise just set its router path to its own
+    // path.
+    if (drupalgap.menu_links[path]) {
+      if (typeof drupalgap.menu_links[path].router_path === 'undefined') {
+        return path;
+      }
+      else {
+        return drupalgap.menu_links[path].router_path;
+      }
+    }
+
+    // Let's figure out where to route this menu item, and attach the
+    // router to the item.
+    var router_path = null;
+    var args = arg(null, path);
+
+    // If there is an integer in the path, replace it with the wildcard
+    // defined via hook_menu implementation.
+    if (args) {
+      var args_size = args.length;
+      switch (args[0]) {
+        case 'comment':
+        case 'user':
+        case 'node':
+          if (args_size > 1 && is_int(parseInt(args[1]))) {
+            args[1] = '%';
+            router_path = args.join('/');
+          }
+          break;
+        case 'taxonomy':
+          if (args_size > 2 && (args[1] == 'vocabulary' || args[1] == 'term') &&
+              is_int(parseInt(args[2]))
+          ) {
+            args[2] = '%';
+            router_path = args.join('/');
+          }
+          break;
+        default:
+          if (args_size > 1 && is_int(parseInt(args[1]))) {
+            args[1] = '%';
+            router_path = args.join('/');
+          }
+          break;
+      }
+    }
+
+    // If we haven't found a router path yet, try some other techniques to find
+    // it. If all else fails, just set the router path to the path itself.
+    if (!router_path) {
+      // Are there any paths in drupalgap.menu_links that would be good
+      // candidates as the router for this path? Let's start at the back of the
+      // argument list and start replacing each with a wildcard (%) and then
+      // see if there is a path in drupalgap.menu_links that can handle it.
+      if (args && args.length > 1) {
+        var temp_router_path;
+        for (var i = args.length - 1; i != -1; i--) {
+          temp_router_path = '';
+          for (var j = 0; j < args.length; j++) {
+            if (j < i) {
+              temp_router_path += args[j];
+            }
+            else {
+              temp_router_path += '%';
+            }
+            if (j != args.length - 1) {
+              temp_router_path += '/';
+            }
+          }
+          // If we found a router path, let's use it.
+          if (drupalgap.menu_links[temp_router_path]) {
+            router_path = temp_router_path;
+            break;
+          }
+        }
+      }
+    }
+
+    // If the router path is a default menu local task, inherit its parent
+    // router path.
+    if (drupalgap.menu_links[router_path] &&
+        drupalgap.menu_links[router_path].type == 'MENU_DEFAULT_LOCAL_TASK' &&
+        drupalgap.menu_links[router_path].parent) {
+      router_path = drupalgap.menu_links[router_path].parent;
+    }
+
+    // If there isn't a router and we couldn't find one, we'll just route
+    // to the path itself.
+    if (!router_path) { router_path = path; }
+
+    // Finally, return the router path.
+    return router_path;
+  }
+  catch (error) {
+    console.log('drupalgap_get_menu_link_router_path - ' + error);
+  }
+}
+
+
+/**
+ * Loads all of the menus specified in drupalgap.settings.menus into
+ * drupalgap.menus. This is called after menu_router_build(), so any system
+ * defined menus will already be present and should be overwritten with any
+ * customizations present in the settings. It then iterates over the menu links
+ * specified in drupalgap.menu_links and attaches any of them that have a
+ * menu_name to their corresponding menu in drupalgap.menus. Any menu link items
+ * that have a 'region' property specified will be added to
+ * drupalgap.theme.regions[region].
+ */
+function drupalgap_menus_load() {
+  try {
+    if (drupalgap.settings.menus) {
+      // Process each menu defined in the settings.
+      for (var menu_name in drupalgap.settings.menus) {
+          if (!drupalgap.settings.menus.hasOwnProperty(menu_name)) { continue; }
+          var menu = drupalgap.settings.menus[menu_name];
+          // If the menu does not already exist, it is a custom menu, so create
+          // the menu and its corresponding block.
+          if (!drupalgap.menus[menu_name]) {
+            // If the custom menu doesn't have its machine name set, set it.
+            if (!menu.menu_name) { menu.menu_name = menu_name; }
+            // Save the custom menu, as long is its name isn't 'regions',
+            // because that is a special "system" menu that allows menu links to
+            // be placed directly in regions via settings.js. Keep in mind the
+            // 'regions' menu is in fact NOT a system menu.
+            if (menu_name != 'regions') {
+              menu_save(menu);
+              // Make a block for this custom menu.
+              var block_delta = menu.menu_name;
+              drupalgap.blocks[0][block_delta] = {
+                name: block_delta,
+                delta: block_delta,
+                module: 'menu'
+              };
+            }
+          }
+          else {
+            // The menu is a system defined menu, merge it together with any
+            // custom settings.
+            $.extend(true, drupalgap.menus[menu_name], menu);
+          }
+      }
+      // Now that we have all of the menus loaded up, and the menu router is
+      // built, let's iterate over all the menu links and perform various
+      // operations on them.
+      for (var path in drupalgap.menu_links) {
+          if (!drupalgap.menu_links.hasOwnProperty(path)) { continue; }
+          var menu_link = drupalgap.menu_links[path];
+          // Let's grab any links from the router that have a menu specified,
+          // and add the link to the router.
+          if (menu_link.menu_name) {
+            if (drupalgap.menus[menu_link.menu_name]) {
+              // Create a links array for the menu if one doesn't exist already.
+              if (!drupalgap.menus[menu_link.menu_name].links) {
+                drupalgap.menus[menu_link.menu_name].links = [];
+              }
+              // Add the path to the menu link inside the menu.
+              menu_link.path = path;
+              // Now push the link onto the menu. We only care about the title,
+              // path and options, as this is just a link. The rest of the
+              // menu link data can be retrieved from drupalgap.menu_links.
+              var link =
+                drupalgap_menus_load_convert_menu_link_to_link_json(menu_link);
+              drupalgap.menus[menu_link.menu_name].links.push(link);
+            }
+            else {
+              console.log(
+                'drupalgap_menus_load - menu does not exist (' +
+                menu_link.menu_name + '), cannot attach link to it (' +
+                path + ')'
+              );
+            }
+          }
+          // If the menu link is set to a specific region, create a links array
+          // for the region if one doesn't exist already, then add the menu item
+          // to the links array as a link.
+          if (menu_link.region) {
+            if (!drupalgap.theme.regions[menu_link.region.name].links) {
+              drupalgap.theme.regions[menu_link.region.name].links = [];
+            }
+            drupalgap.theme.regions[menu_link.region.name].links.push(
+              menu_link
+            );
+          }
+      }
+      // If there are any region menu links defined in settings.js, create a
+      // links array for the region if one doesn't exist already, then add the
+      // menu item to the links array as a link.
+      if (typeof drupalgap.settings.menus.regions !== 'undefined') {
+        for (var region in drupalgap.settings.menus.regions) {
+            if (!drupalgap.settings.menus.regions.hasOwnProperty(region)) { continue; }
+            var menu = drupalgap.settings.menus.regions[region];
+            if (
+              typeof menu.links !== 'undefined' &&
+              $.isArray(menu.links) &&
+              menu.links.length > 0
+            ) {
+              if (!drupalgap.theme.regions[region].links) {
+                drupalgap.theme.regions[region].links = [];
+              }
+              for (var index in menu.links) {
+                  if (!menu.links.hasOwnProperty(index)) { continue; }
+                  var link = menu.links[index];
+                  drupalgap.theme.regions[region].links.push(link);
+              }
+            }
+        }
+      }
+    }
+  }
+  catch (error) { console.log('drupalgap_menus_load - ' + error); }
+}
+
+/**
+ * Given a menu link item from drupalgap_menus_load(), this will return a JSON
+ * object representing a link object compatible with theme_link(). It contains
+ * the link title, path and options.
+ * @param {Object} menu_link
+ * @return {Object}
+ */
+function drupalgap_menus_load_convert_menu_link_to_link_json(menu_link) {
+  try {
+    var link = {};
+    if (menu_link.title) {
+      // TODO - this is strange, we have to fill the 'text' value so theme_link
+      // will play nice. These two properties, and their usage, need a thorough
+      // review, only one should probably be used.
+      // UPDATE - the link.text property is probably no longer used, it should
+      // be safe to get rid of. In fact, this whole function is dumb and should
+      // go away.
+      link.title = menu_link.title;
+      link.text = menu_link.title;
+    }
+    if (menu_link.path) { link.path = menu_link.path; }
+    if (menu_link.options) { link.options = menu_link.options; }
+    // If it is a menu link on a region, and it has options, set the link
+    // options to the ones provided in the menu link region settings.
+    if (menu_link.region && menu_link.region.options) {
+      link.options = menu_link.options = menu_link.region.options;
+    }
+    return link;
+  }
+  catch (error) {
+    console.log(
+      'drupalgap_menus_load_convert_menu_link_to_link_json - ' + error
+    );
+  }
+}
+
+
+/**
+ * Given a path, and its corresponding menu item, this will determine any
+ * parent, sibling, and/or child menu item paths and set the references on each
+ * so they are all aware of eachother's paths.
+ * @param {String} path
+ * @param {Object} menu_item
+ */
+function drupalgap_menu_router_build_menu_item_relationships(path, menu_item) {
+  try {
+    // Split up the path arguments.
+    var args = arg(null, path);
+    // Any parent?
+    if (args.length > 1) {
+      // Set the parent path.
+      var parent = args.splice(0, args.length - 1).join('/');
+      menu_item.parent = parent;
+      // Make sure the parent exists.
+      if (drupalgap.menu_links[parent]) {
+        // Now tell the parent about this child. If the parent doesn't yet have
+        // any children, setup the children array on the parent.
+        if (typeof drupalgap.menu_links[parent].children === 'undefined') {
+          drupalgap.menu_links[parent].children = [];
+        }
+        drupalgap.menu_links[parent].children.push(path);
+        // Now tell any siblings about this item, and tell this item about any
+        // siblings.
+        if (typeof menu_item.siblings === 'undefined') {
+          menu_item.siblings = [];
+        }
+        for (var index in drupalgap.menu_links[parent].children) {
+            if (!drupalgap.menu_links[parent].children.hasOwnProperty(index)) { continue; }
+            var sibling = drupalgap.menu_links[parent].children[index];
+            if (sibling != path && drupalgap.menu_links[sibling]) {
+              if (
+                typeof drupalgap.menu_links[sibling].siblings === 'undefined'
+              ) {
+                drupalgap.menu_links[sibling].siblings = [];
+              }
+              drupalgap.menu_links[sibling].siblings.push(path);
+              menu_item.siblings.push(sibling);
+            }
+        }
+      }
+    }
+  }
+  catch (error) {
+    console.log('drupalgap_menu_router_build_relationships - ' + error);
+  }
+}
+
+
+/**
+ * Show the jQueryMobile loading message.
+ * @see http://stackoverflow.com/a/16277865/763010
+ */
+function drupalgap_loading_message_show() {
+  try {
+    // Backwards compatibility for versions prior to 7.x-1.6-alpha
+    if (drupalgap.loading === 'undefined') { drupalgap.loading = false; }
+    // Return if the loading message is already shown.
+    if (drupalgap.loading || drupalgap_toast_is_shown()) { return; }
+    var options = drupalgap_loader_options();
+    if (arguments[0]) { options = arguments[0]; }
+    // Show the loading message.
+    //$.mobile.loading('show', options);
+    //drupalgap.loading = true;
+    setTimeout(function() {
+      $.mobile.loading('show', options);
+      drupalgap.loading = true;
+    }, 1);
+  }
+  catch (error) { console.log('drupalgap_loading_message_show - ' + error); }
+}
+
+/**
+ * Hide the jQueryMobile loading message.
+ */
+function drupalgap_loading_message_hide() {
+  try {
+    if (drupalgap_toast_is_shown()) { return; }
+    setTimeout(function() {
+      $.mobile.loading('hide');
+      drupalgap.loading = false;
+      drupalgap.loader = 'loading';
+    }, 100);
+  }
+  catch (error) { console.log('drupalgap_loading_message_hide - ' + error); }
+}
+
+/**
+ * Returns the jQM loader options based on the current mode and settings.js.
+ * @return {Object}
+ */
+function drupalgap_loader_options() {
+  try {
+    var mode = drupalgap.loader;
+    var text = t('Loading') + '...';
+    var textVisible = true;
+    if (mode == 'saving') { var text = t('Saving') + '...'; }
+    var options = {
+      text: text,
+      textVisible: textVisible
+    };
+    if (drupalgap.settings.loader && drupalgap.settings.loader[mode]) {
+      options = $.extend(true, options, drupalgap.settings.loader[mode]);
+      if (options.text) { options.text = t(options.text); }
+    }
+    return options;
+  }
+  catch (error) { console.log('drupalgap_loader_options - ' + error); }
+}
+
+/**
+ * Sets a message to display to the user. Optionally pass in a second argument
+ * to specify the message type: status, warning, error
+ * @param {String} message
+ */
+function drupalgap_set_message(message) {
+  try {
+    if (empty(message)) { return; }
+    var type = 'status';
+    if (arguments[1]) { type = arguments[1]; }
+    var msg = {
+      message: message,
+      type: type
+    };
+    drupalgap.messages.push(msg);
+  }
+  catch (error) { console.log('drupalgap_set_message - ' + error); }
+}
+
+/**
+ * Sets the current messages.
+ * @param {Array} messages
+ */
+function drupalgap_set_messages(messages) {
+  try {
+    drupalgap.messages = messages;
+  }
+  catch (error) { console.log('drupalgap_set_messages - ' + error); }
+}
+
+/**
+ * Returns the current messages.
+ * @return {Array}
+ */
+function drupalgap_get_messages() {
+  try {
+    return drupalgap.messages;
+  }
+  catch (error) { console.log('drupalgap_get_messages - ' + error); }
+}
+
+/**
+ * Clears the messages from the current page. Optionally pass in a page id to
+ * clear messages from a particular page.
+ */
+function drupalgap_clear_messages() {
+  try {
+    var page_id = arguments[0];
+    if (empty(page_id)) { page_id = drupalgap_get_page_id(); }
+    $('#' + page_id + ' div.messages').remove();
+  }
+  catch (error) { console.log('drupalgap_clear_messages - ' + error); }
+}
+
+/**
+ * Alerts a message to the user using PhoneGap's alert. It is important to
+ * understand this is an async function, so code will continue to execute while
+ * the alert is displayed to the user.
+ * You may optionally pass in a second argument as a JSON object with the
+ * following properties:
+ *   alertCallback - the function to call after the user presses OK
+ *   title - the title to use on the alert box, defaults to 'Alert'
+ *   buttonName - the text to place on the button, default to 'OK'
+ * @param {String} message
+ */
+function drupalgap_alert(message) {
+  try {
+    var options = null;
+    if (arguments[1]) { options = arguments[1]; }
+    var alertCallback = function() { };
+    var title = t('Alert');
+    var buttonName = t('OK');
+    if (options) {
+      if (options.alertCallback) { alertCallback = options.alertCallback; }
+      if (options.title) { title = options.title; }
+      if (options.buttonName) { buttonName = options.buttonName; }
+    }
+    if (
+      drupalgap.settings.mode != 'phonegap' ||
+      typeof navigator.notification === 'undefined'
+    ) {
+      alert(message);
+      alertCallback();
+    }
+    else {
+      navigator.notification.alert(message, alertCallback, title, buttonName);
+    }
+  }
+  catch (error) { console.log('drupalgap_alert - ' + error); }
+}
+
+/**
+ * Displays a confirmation message to the user using PhoneGap's confirm. It is
+ * important to understand this is an async function, so code will continue to
+ * execute while the confirmation is displayed to the user.
+ * You may optionally pass in a second argument as a JSON object with the
+ * following properties:
+ *   confirmCallback - the function to call after the user presses a button, the
+ *               button's label is passed to this function.
+ *   title - the title to use on the alert box, defaults to 'Confirm'
+ *   buttonLabels - the text to place on the OK, and Cancel buttons, separated
+ *                  by comma.
+ * @param {String} message
+ * @return {Boolean}
+ */
+function drupalgap_confirm(message) {
+  try {
+    var options = null;
+    if (arguments[1]) { options = arguments[1]; }
+    var confirmCallback = function(button) { };
+    var title = t('Confirm');
+    var buttonLabels = [t('OK'), t('Cancel')];
+    if (options) {
+      if (options.confirmCallback) {
+        confirmCallback = options.confirmCallback;
+      }
+      if (options.title) { title = options.title; }
+      if (options.buttonLabels) { buttonLabels = options.buttonLabels; }
+    }
+    // The phonegap confirm dialog doesn't seem to work in Ripple, so just use
+    // the default one, and it definitely doesn't work in a web app, so
+    // otherwise just use the default confirm.
+    if (
+      typeof parent.window.ripple === 'function' ||
+      drupalgap.settings.mode == 'web-app'
+    ) {
+      var r = confirm(message);
+      if (r == true) { confirmCallback(1); } // OK button.
+      else { confirmCallback(2); } // Cancel button.
+    }
+    else {
+      navigator.notification.confirm(
+        message,
+        confirmCallback,
+        title,
+        buttonLabels
+      );
+    }
+    return false;
+  }
+  catch (error) { console.log('drupalgap_confirm - ' + error); }
+}
+
+/**
+ * Show a non intrusive alert message. You may optionally pass in an
+ * integer value as the second argument to specify how many milliseconds
+ * to wait before closing the message. Likewise, you can pass in a
+ * third argument to specify how long to wait before opening the
+ * message.
+ * @param {string} html - The html to display.
+ */
+function drupalgap_toast(html) {
+  try {
+    var open = arguments[2] ? arguments[2] : 750;
+    var close = arguments[1] ? arguments[1] : 1500;
+    setTimeout(function() {
+      drupalgap.toast.shown = true;
+      $.mobile.loading('show', {
+        textVisible: true,
+        html: html
+      });
+      var interval = setInterval(function () {
+        $.mobile.loading('hide');
+        drupalgap.toast.shown = false;
+        clearInterval(interval);
+      }, close);
+    }, open);
+  }
+  catch (error) {
+    console.log('drupalgap_toast - ' + error);
+  }
+}
+
+/**
+ * Returns true if the toast is currently shown, false otherwise.
+ * @returns {Boolean}
+ */
+function drupalgap_toast_is_shown() {
+  return drupalgap.toast.shown;
+}
+
+/**
+ * Prompt's the user to input some text.
+ * @param {String} msg The message to prompt about
+ * @param {Object} options
+ *  {Function} onPrompt - the callback function to invoke. Sends an object in phonegap mode, or a string in web-app mode.
+ *  {String} title - the title of the box
+ *  {Array} buttonLabels - the button labels, separated by comma, defaults to ['Ok', 'Exit']]
+ *  {String} defaultText - the default text to place in the box
+ */
+function drupalgap_prompt(msg, options) {
+  var onPrompt = options.onPrompt ? options.onPrompt : function() {};
+  var title = options.title ? options.title : drupalgap.settings.title;
+  var buttonLabels = options.buttonLabels ? options.buttonLabels : [t('Ok'), t('Exit')];
+  var defaultText = options.defaultText ? options.defaultText : '';
+  var done = function(result) {
+    if (typeof result === 'object' && result != null) { onPrompt(result); }
+    else {
+      var send = {
+        buttonIndex: 2,
+        input1: ''
+      };
+      if (result != null) {
+        send.buttonIndex = 1;
+        send.input1 = result;
+      }
+      onPrompt(send);
+    }
+  };
+  if (navigator && navigator.notification) {
+    navigator.notification.prompt(msg, done, title, buttonLabels, defaultText);
+  }
+  else { done(prompt(msg, defaultText)); }
+}
+
+
+/**
+ * This will return the query string arguments for the page. You may optionally
+ * pass in a key to get its value, pass in a key then a value to set the key
+ * equal to the value, and you may optionally pass in a third argument to use
+ * a specific page id, otherwise DrupalGap will automatically use the
+ * appropriate page id.
+ * @return {String|NULL}
+ */
+function _GET() {
+  try {
+
+    // Set up defaults.
+    var get = false;
+    var set = false;
+    var key = null;
+    var value = null;
+
+    // Are we setting? If so, grab the value and key to set.
+    if (typeof arguments[1] !== 'undefined') {
+      set = true;
+      value = arguments[1];
+      if (typeof arguments[0] !== 'undefined') { key = arguments[0]; }
+      else {
+        console.log('WARNING: _GET - missing key for value (' + value + ')');
+        return null;
+      }
+    }
+
+    // Are we getting a certain value? If so, grab the key to get.
+    else if (typeof arguments[0] !== 'undefined') {
+      get = true;
+      key = arguments[0];
+    }
+
+    // Otherwise we are getting the whole page.
+    else { get = true; }
+
+    // Now perform the get or set...
+
+    // Get.
+    if (get) {
+
+      // If a page id was provided use it, otherwise use the current page's id.
+      var id = null;
+      if (typeof arguments[2] !== 'undefined') { id = arguments[2]; }
+      else { id = drupalgap_get_page_id(); }
+
+      // Now that we know the page id, lets return the value if a key was
+      // provided, otherwise return the whole query string object for the page.
+      if (typeof _dg_GET[id] !== 'undefined') {
+        if (!key) { return _dg_GET[id]; }
+        else if (typeof _dg_GET[id][key] !== 'undefined') {
+          return _dg_GET[id][key];
+        }
+        return null;
+      }
+
+    }
+
+    // Set.
+    else if (set) {
+
+      // If we were given a path, use its page id as the property index, other
+      // wise we'll use the current page (which is different than the
+      // destination page!).
+      var id = null;
+      if (typeof arguments[2] !== 'undefined') {
+        id = drupalgap_get_page_id(arguments[2]);
+      }
+      else { id = drupalgap_get_page_id(); }
+
+      // If the id hasn't been instantiated, do so. Then set the key and value
+      // onto it.
+      if (typeof _dg_GET[id] === 'undefined') { _dg_GET[id] = {}; }
+      if (value) { _dg_GET[id][key] = value; }
+
+    }
+    return null;
+  }
+  catch (error) { console.log('_GET - ' + error); }
+}
+
+/**
+ * Each time we use drupalgap_goto to change a page, this function is called on
+ * the pagebeforehange event. If we're not moving backwards, or navigating to
+ * the same page, this will preproccesses the page, then processes it.
+ */
+$(document).on('pagebeforechange', function(e, data) {
+    try {
+      // If we're moving backwards, reset drupalgap.back and return.
+      if (drupalgap && drupalgap.back) {
+        drupalgap.back = false;
+        return;
+      }
+      // If the jqm active page url is the same as the page id of the current
+      // path, return.
+      if (
+        drupalgap_jqm_active_page_url() ==
+        drupalgap_get_page_id(drupalgap_path_get())
+      ) { return; }
+      // We only want to process the page we are going to, not the page we are
+      // coming from. When data.toPage is a string that is our destination page.
+      if (typeof data.toPage === 'string') {
+
+        // If drupalgap_goto() determined that it is necessary to prevent the
+        // default page from reloading, then we'll skip the page
+        // processing and reset the prevention boolean.
+        if (drupalgap && !drupalgap.page.process) {
+          drupalgap.page.process = true;
+        }
+        else if (drupalgap) {
+          // Pre process, then process the page.
+          template_preprocess_page(drupalgap.page.variables);
+          template_process_page(drupalgap.page.variables);
+        }
+
+      }
+    }
+    catch (error) { console.log('pagebeforechange - ' + error); }
+});
+
+/**
+ * Implementation of template_preprocess_page().
+ * @param {Object} variables
+ */
+function template_preprocess_page(variables) {
+  try {
+    // Set up default attributes for the page's div container.
+    if (typeof variables.attributes === 'undefined') {
+      variables.attributes = {};
+    }
+
+    // @todo - is this needed?
+    // @UPDATE - this should be used, but these page attributes are ignored
+    // by drupalgap_add_page_to_dom()!
+    variables.attributes['data-role'] = 'page';
+
+    module_invoke_all('preprocess_page', variables);
+
+    // Place the variables into drupalgap.page
+    drupalgap.page.variables = variables;
+  }
+  catch (error) { console.log('template_preprocess_page - ' + error); }
+}
+
+/**
+ * Implementation of template_process_page().
+ * @param {Object} variables
+ */
+function template_process_page(variables) {
+  try {
+    var drupalgap_path = drupalgap_path_get();
+    // Execute the active menu handler to assemble the page output. We need to
+    // do this before we render the regions below.
+    drupalgap.output = menu_execute_active_handler();
+    // For each region, render it, then replace the placeholder in the page's
+    // html with the rendered region.
+    var page_id = drupalgap_get_page_id(drupalgap_path);
+    var page = $('#' + page_id);
+    var page_html = $(page).html();
+    if (!page_html) { return; }
+    for (var index in drupalgap.theme.regions) {
+        if (!drupalgap.theme.regions.hasOwnProperty(index)) { continue; }
+        var region = drupalgap.theme.regions[index];
+        var _region = {};
+        $.extend(true, _region, region);
+        page_html = page_html.replace(
+          '{:' + region.name + ':}',
+          drupalgap_render_region(_region)
+        );
+    }
+    $(page).html(page_html);
+    module_invoke_all('post_process_page', variables);
+  }
+  catch (error) { console.log('template_process_page - ' + error); }
+}
+
+/**
+ * Given a path, this will return the id for the page's div element.
+ * For example, a string path of 'foo/bar' would result in an id of 'foo_bar'.
+ * If no path is provided, it will return the current page's id.
+ * @param {String} path
+ * @return {String}
+ */
+function drupalgap_get_page_id(path) {
+  try {
+    if (!path) { path = drupalgap_path_get(); }
+    var id = path.toLowerCase().replace(/\//g, '_').replace(/-/g, '_');
+    return id;
+  }
+  catch (error) { console.log('drupalgap_get_page_id - ' + error); }
+}
+
+/**
+ * Given a page id, the theme's hook_TYPE_tpl_html() string, and the menu link object
+ * (all bundled in options) this takes the page template html and adds it to the
+ * DOM. It doesn't actually render the page, that is taken care of by the
+ * pagebeforechange handler.
+ * @param {Object} options
+ */
+function drupalgap_add_page_to_dom(options) {
+  try {
+    // Prepare the default page attributes, then merge in any customizations
+    // from the hook_menu() item, then inject the attributes into the
+    // placeholder. We have to manually add our default class name after the
+    // extend until this issue is resolved:
+    // https://github.com/signalpoint/DrupalGap/issues/321
+    var attributes = {
+      id: options.page_id,
+      'data-role': 'page'
+    };
+    attributes = $.extend(true, attributes, options.menu_link.options.attributes);
+    attributes['class'] += ' ' + drupalgap_page_class_get(drupalgap.router_path);
+    module_invoke_all('add_page_to_dom_alter', attributes, options);
+    options.html = options.html.replace(
+      /{:drupalgap_page_attributes:}/g,
+      drupalgap_attributes(attributes)
+    );
+    // Add the html to the page and the page id to drupalgap.pages.
+    $('body').append(options.html);
+    drupalgap.pages.push(options.page_id);
+  }
+  catch (error) { console.log('drupalgap_add_page_to_dom - ' + error); }
+}
+
+/**
+ * Attempts to remove given page from the DOM, will not remove the current page.
+ * You may force the removal by passing in a second argument as a JSON object
+ * with a 'force' property set to true. You may pass in a third argument to
+ * specify the current page, otherwise it will default to what DrupalGap thinks
+ * is the current page. No matter what, the current page (specified or not)
+ * can't be removed from the DOM, because jQM always needs one page in the DOM.
+ * @param {String} page_id
+ */
+function drupalgap_remove_page_from_dom(page_id) {
+  try {
+    var current_page_id = null;
+    if (typeof arguments[2] !== 'undefined') { current_page_id = arguments[2]; }
+    else { current_page_id = drupalgap_get_page_id(drupalgap_path_get()); }
+    var options = {};
+    if (typeof arguments[1] !== 'undefined') { options = arguments[1]; }
+    if (current_page_id != page_id || options.force) {
+      var currentPage = $('#' + current_page_id);
+      // Preserve and re-apply style to current page, @see https://github.com/signalpoint/DrupalGap/issues/837
+      var style = $(currentPage).attr('style');
+      $('#' + page_id).empty().remove();
+      if (style) { $(currentPage).attr('style', style); }
+      var page_index = drupalgap.pages.indexOf(page_id);
+      if (page_index > -1) { drupalgap.pages.splice(page_index, 1); }
+      // We'll remove the query string, unless we were instructed to leave it.
+      if (
+        typeof _dg_GET[page_id] !== 'undefined' &&
+        (typeof options.leaveQuery === 'undefined' || !options.leaveQuery)
+      ) { delete _dg_GET[page_id]; }
+      // Remove any embedded view for the page.
+      views_embedded_view_delete(page_id);
+    }
+    else {
+      console.log('WARNING: drupalgap_remove_page_from_dom() - not removing ' +
+        'the current page (' + page_id + ') from the DOM!');
+    }
+  }
+  catch (error) { console.log('drupalgap_remove_page_from_dom - ' + error); }
+}
+
+/**
+ * Removes all pages from the DOM except the current one.
+ */
+function drupalgap_remove_pages_from_dom() {
+  try {
+    var current_page_id = drupalgap_get_page_id(drupalgap_path_get());
+    var pages = drupalgap.pages.slice(0);
+    for (var index in pages) {
+        if (!pages.hasOwnProperty(index)) { continue; }
+        var page_id = pages[index];
+        if (current_page_id != page_id) {
+          drupalgap_remove_page_from_dom(page_id, null, current_page_id);
+        }
+    }
+    // Reset drupalgap.pages to only contain the current page id.
+    drupalgap.pages = [current_page_id];
+    // Reset the drupalgap.views.ids array.
+    drupalgap.views.ids = [];
+    // Reset the jQM page events.
+    drupalgap.page.jqm_events = [];
+    // Reset the back path.
+    drupalgap.back_path = [];
+  }
+  catch (error) { console.log('drupalgap_remove_pages_from_dom - ' + error); }
+}
+
+/**
+ * Given a router path, this will return the CSS class name that can be used for
+ * the page container.
+ * @param {String} router_path The page router path.
+ * @return {String} A css class name.
+ */
+function drupalgap_page_class_get(router_path) {
+  try {
+    // Replace '/' and '%' with underscores, then trim any trailing underscores.
+    var class_name = router_path.replace(/[\/%]/g, '_');
+    while (class_name.lastIndexOf('_') == class_name.length - 1) {
+      class_name = class_name.substr(0, class_name.length - 1);
+    }
+    return class_name;
+  }
+  catch (error) { console.log('drupalgap_page_class_get - ' + error); }
+}
+
+/**
+ * Returns true if the given page id's page div already exists in the DOM.
+ * @param {String} page_id
+ * @return {Boolean}
+ */
+function drupalgap_page_in_dom(page_id) {
+  try {
+    var pages = $("body div[data-role$='page']");
+    var page_in_dom = false;
+    if (pages && pages.length > 0) {
+      for (var index in pages) {
+          if (!pages.hasOwnProperty(index)) { continue; }
+          var page = pages[index];
+          if (($(page).attr('id')) == page_id) {
+            page_in_dom = true;
+            break;
+          }
+      }
+    }
+    return page_in_dom;
+  }
+  catch (error) { console.log('drupalgap_page_in_dom - ' + error); }
+}
+
+/**
+ * Returns true if the current page is the front page, false otherwise.
+ * @return {Boolean}
+ */
+function drupalgap_is_front_page() {
+  try {
+    return drupalgap_path_get() == drupalgap.settings.front;
+  }
+  catch (error) { console.log('drupalgap_is_front_page - ' + error); }
+}
+
+/**
+ * Returns the URL of the active jQuery Mobile page.
+ * @return {String}
+ */
+function drupalgap_jqm_active_page_url() {
+  try {
+    // WARNING: when the app first loads, this value may be much different than
+    // you expect. It certainly is not the front page path, because on Android
+    // for example it returns '/android_asset/www/index.html'. Also, when the
+    // app first loads, activePage is null, so just return an empty string.
+    if (!$.mobile.activePage) { return ''; }
+    return $.mobile.activePage.data('url');
+  }
+  catch (error) { console.log('drupalgap_jqm_active_page_url - ' + error); }
+}
+
+/**
+ * Renders the html string of the page content that is stored in
+ * drupalgap.output.
+ * @return {String}
+ */
+function drupalgap_render_page() {
+  try {
+    module_invoke_all('page_build', drupalgap.output);
+    return drupalgap_render(drupalgap.output);
+  }
+  catch (error) { console.log('drupalgap_render_page - ' + error); }
+}
+
+/**
+ * Given a region, this renders it and all the blocks in it. The blocks are
+ * specified in the settings.js file, they are bundled under a region, which in
+ * turn is bundled under a theme name. Returns an empty string if it fails.
+ * @param {Object} region
+ * @return {String}
+ */
+function drupalgap_render_region(region) {
+  try {
+    // @TODO - this function is getting huge. Break it up into many more
+    // manageable functions.
+
+    // Make sure there are blocks specified for this theme in settings.js.
+    if (!drupalgap.settings.blocks[drupalgap.settings.theme]) {
+      var msg = 'WARNING: drupalgap_render_region() - there are no blocks ' +
+        'for the "' + drupalgap.settings.theme + '" theme in the settings.js ' +
+        'file!';
+      console.log(msg);
+      return '';
+    }
+
+    // Grab the current path.
+    var current_path = drupalgap_path_get();
+
+    // Let's render the region...
+    var region_html = '';
+
+    region_html +=
+      _drupalgap_region_render_zone('_prefix', region, current_path);
+
+    // Verify the region has any blocks.
+    var hasBlocks = drupalgap.settings.blocks[drupalgap.settings.theme][region.name];
+    if (hasBlocks) {
+      var blockCount = 0;
+      $.each(drupalgap.settings.blocks[drupalgap.settings.theme][region.name], function(index, block) {
+        if (!in_array(index, ['_prefix', '_suffix'])) {
+          blockCount++;
+        }
+      });
+      hasBlocks = blockCount;
+    }
+
+    // If the region has blocks specified for it in the theme in settings.js...
+    if (hasBlocks) {
+
+      // If a class attribute hasn't yet been provided, set a default, then
+      // append a system class name for the region onto its attributes array.
+      if (!region.attributes['class']) { region.attributes['class'] = ''; }
+      region.attributes['class'] += ' region_' + region.name + ' ';
+
+      // Open the region container.
+      region_html += '<div ' + drupalgap_attributes(region.attributes) + '>';
+
+      // If there are any links attached to this region, render them first.
+      var region_link_count = 0;
+      var region_link_popup_count = 0;
+      if (region.links && region.links.length > 0) {
+
+        // Let's first iterate over all of the region links and keep counts of
+        // any links that use the ui-btn-left and ui-btn-right class attribute.
+        // This will allow us to properly wrap region links in a control group.
+        var ui_btn_left_count = 0;
+        var ui_btn_right_count = 0;
+        for (var index in region.links) {
+            if (!region.links.hasOwnProperty(index)) { continue; }
+            var link = region.links[index];
+            var data = menu_region_link_get_data(link);
+            if (!drupalgap_check_visibility('region', data)) { continue; }
+            region_link_count++;
+            var css_class = drupalgap_link_get_class(link);
+            if (css_class) {
+              var side = menu_region_link_get_side(css_class);
+              if (side == 'left') { ui_btn_left_count++; }
+              else if (side == 'right') { ui_btn_right_count++; }
+            }
+        }
+
+        // We need to separately render each side of the header (left, right).
+        // That allows us to properly wrap the links with a control group if
+        // it is needed.
+        var region_link_html = '';
+        var ui_btn_left_html = '';
+        var ui_btn_right_html = '';
+        for (var i = 0; i < region.links.length; i++) {
+
+          // Grab the link and its data.
+          var region_link = region.links[i];
+          var data = menu_region_link_get_data(region_link);
+
+          // Check link's region visiblity settings. Links will not be rendered
+          // on certain system pages.
+          // @TODO - this additional call to drupalgap_check_visibility() here
+          // may be expensive, consider setting aside the results from the call
+          // above, and using them here.
+          if (drupalgap_check_visibility('region', data)) {
+
+            // Don't render the link on certain system pages.
+            if (in_array(current_path, ['offline', 'error', 'user/logout'])) {
+              continue;
+            }
+
+            // If this is a popup region link, set the jQM attributes to make
+            // this link function as a popup (dropdown) menu. Set the default
+            // link icon, if it isn't set.
+            var link_text = region_link.title;
+            var link_path = region_link.path;
+            if (data.options.popup) {
+
+              region_link_popup_count++;
+
+              // If the link text isn't set, and the data icon pos isn't set,
+              // set it the data icon pos so the button and icon are rendered
+              // properly.
+              if (
+                (!link_text || empty(link_text)) &&
+                typeof data.options.attributes['data-iconpos'] === 'undefined'
+              ) { data.options.attributes['data-iconpos'] = 'notext'; }
+
+              // If data-rel, data-icon, data-role aren't set, set them.
+              if (
+                typeof data.options.attributes['data-rel'] === 'undefined'
+              ) { data.options.attributes['data-rel'] = 'popup'; }
+              if (
+                typeof data.options.attributes['data-icon'] === 'undefined'
+              ) { data.options.attributes['data-icon'] = 'bars'; }
+              if (
+                typeof data.options.attributes['data-role'] === 'undefined'
+              ) { data.options.attributes['data-role'] = 'button'; }
+
+              // Popup menus need a dynamic href value on the link, so we
+              // always overwrite it.
+              link_path = null;
+              data.options.attributes['href'] =
+                '#' + menu_container_id(data.options.popup_delta);
+            }
+            else {
+
+              // Set the data-role to a button, if one isn't already set.
+              if (typeof data.options.attributes['data-role'] === 'undefined') {
+                data.options.attributes['data-role'] = 'button';
+              }
+
+            }
+
+            // If it has notext for the icon position, force the text to be
+            // an nbsp.
+            if (data.options.attributes['data-iconpos'] == 'notext') {
+              link_text = '&nbsp;';
+            }
+
+            // Render the link on the proper side.
+            var css_class = drupalgap_link_get_class(region_link);
+            var side = menu_region_link_get_side(css_class);
+            var link_html = l(link_text, link_path, data.options);
+            if (side == 'left') { ui_btn_left_html += link_html; }
+            else if (side == 'right') { ui_btn_right_html += link_html; }
+
+          }
+
+        }
+
+        // If there was more than one link on a side, wrap it in a control
+        // group, and remove the ui-btn class from the links.
+        if (ui_btn_left_count > 1) {
+          var attrs = {
+            'data-type': 'horizontal',
+            'data-role': 'controlgroup',
+            'class': 'ui-btn-left'
+          };
+          ui_btn_left_html = '<div ' + drupalgap_attributes(attrs) + '>' +
+            ui_btn_left_html.replace(/ui-btn-left/g, '') +
+          '</div>';
+        }
+        if (ui_btn_right_count > 1) {
+          var attrs = {
+            'data-type': 'horizontal',
+            'data-role': 'controlgroup',
+            'class': 'ui-btn-right'
+          };
+          ui_btn_right_html = '<div ' + drupalgap_attributes(attrs) + '>' +
+            ui_btn_right_html.replace(/ui-btn-right/g, '') +
+          '</div>';
+        }
+
+        // Finally render the ui sides on the region.
+        region_html += ui_btn_left_html + ui_btn_right_html;
+      }
+
+      // Render each block in the region. Determine how many visible blocks are
+      // in the region.
+      var block_counts = {
+        block_count: 0,
+        block_menu_count: 0
+      };
+      var blocks = drupalgap.settings.blocks[drupalgap.settings.theme][region.name];
+      for (var block_delta in blocks) {
+          if (!blocks.hasOwnProperty(block_delta)) { continue; }
+          var block_settings = blocks[block_delta];
+          // Ignore region _prefix and _suffix.
+          if (block_delta == '_prefix' || block_delta == '_suffix') { continue; }
+          // Render the block.
+          region_html += drupalgap_block_render(
+            region,
+            current_path,
+            block_delta,
+            block_settings,
+            block_counts
+          );
+      }
+
+      // If this was a header or footer, and there were only region links
+      // rendered, place an empty header in the region.
+      if (
+        in_array(region.attributes['data-role'], ['header', 'footer']) &&
+        (
+          block_counts.block_count == 0 && region_link_count > 0 ||
+          block_counts.block_count - block_counts.block_menu_count == 0
+        ) ||
+        (
+          region_link_count > 0 &&
+          region_link_popup_count >= block_counts.block_menu_count &&
+          block_counts.block_count == 0
+        )
+      ) {
+        // Show an empty header if we're not collapsing on an empty region.
+        if (
+          typeof region.collapse_on_empty === 'undefined' ||
+          region.collapse_on_empty === false
+        ) { region_html += '<h2>&nbsp;</h2>'; }
+      }
+
+      // Close the region container.
+      region_html += '</div><!-- ' + region.name + ' -->';
+
+    }
+
+    region_html +=
+      _drupalgap_region_render_zone('_suffix', region, current_path);
+
+    return region_html;
+  }
+  catch (error) { console.log('drupalgap_render_region - ' + error); }
+}
+
+/**
+ * Renders the given zone (_prefix, _suffix) if any for a region.
+ * @param {String} zone
+ * @param {Object} region
+ * @param {String} current_path
+ * @return {String}
+ */
+function _drupalgap_region_render_zone(zone, region, current_path) {
+  try {
+    var html = '';
+    var theme_name = drupalgap.settings.theme;
+    if (typeof drupalgap.settings.blocks[theme_name][region.name] ===
+      'undefined'
+    ) { return html; }
+    var region_settings =
+      drupalgap.settings.blocks[theme_name][region.name];
+    if (typeof region_settings[zone] === 'undefined') { return html; }
+    var blocks = region_settings[zone];
+    for (var block_delta in blocks) {
+        if (!blocks.hasOwnProperty(block_delta)) { continue; }
+        var block_settings = blocks[block_delta];
+        html += drupalgap_block_render(
+          region,
+          current_path,
+          block_delta,
+          block_settings
+        );
+    }
+    return html;
+  }
+  catch (error) { console.log('_drupalgap_region_render_zone - ' + error); }
+}
+
+/**
+ * Given a key (typically a block delta), this will generate a unique ID that
+ * can be used for the panel. It will be fused with the current page id.
+ * @param {String} key
+ * @return {String}
+ */
+function drupalgap_panel_id(key) {
+  try {
+    return key + '_' + drupalgap_get_page_id();
+  }
+  catch (error) { console.log('drupalgap_panel_id - ' + error); }
+}
+
+
+function drupalgap_render(content) {
+
+  var output_type = $.type(content);
+  var html = '';
+
+  // If the output came back as a string, we can render it as is. If the
+  // output came back as on object, render each element in it through the
+  // theme system.
+  if (output_type === 'string') { html = content; }
+  else if (output_type === 'object') {
+    // The page came back as a render object. Let's define the names of
+    // variables that are reserved for theme processing.
+    var render_variables = ['theme', 'view_mode', 'language'];
+
+    if (content.markup) { return content.markup; }
+    if (content.theme && !drupalgap.theme_registry[content.theme]) {
+      return theme(content.theme, content);
+    }
+
+    // Is there a theme value specified in the content and the registry?
+    if (content.theme && drupalgap.theme_registry[content.theme]) {
+
+      var themeName = drupalgap.settings.theme;
+      var tplHtmlFunctionName = themeName + '_' + content.theme + '_tpl_html';
+      template_file_html = '';
+      if (function_exists(tplHtmlFunctionName)) { template_file_html = window[tplHtmlFunctionName](); }
+      else {
+        var template = drupalgap.theme_registry[content.theme];
+        var template_file_name = content.theme.replace(/_/g, '-') + '.tpl.html';
+        var template_file_path = template.path + '/' + template_file_name;
+        console.log('@deprecated: ' + template_file_path + ' - use ' + tplHtmlFunctionName + '() in ' +
+            themeName + '.js instead, see: http://docs.drupalgap.org/7/Themes/Create_a_Custom_Theme');
+        template_file_html = drupalgap_file_get_contents(template_file_path);
+      }
+
+      // What variable placeholders are present in the template file?
+      var placeholders = drupalgap_get_placeholders_from_html(template_file_html);
+      if (placeholders) {
+
+        // Replace each placeholder with html.
+        for (var index in placeholders) {
+          if (!placeholders.hasOwnProperty(index)) { continue; }
+          var placeholder = placeholders[index];
+          var _html = '';
+          if (content[placeholder]) {
+            // Grab the element variable from the content.
+            var element = content[placeholder];
+            // If it is markup, render it as is, if it is themeable, then theme it.
+            if (content[placeholder].markup) {
+              _html = content[placeholder].markup;
+            }
+            else if (content[placeholder].theme) {
+              _html = theme(content[placeholder].theme, element);
+            }
+            // Now remove the variable from the content.
+            delete content[placeholder];
+          }
+          // Now replace the placeholder with the html, even if it was empty.
+          template_file_html = template_file_html.replace('{:' + placeholder + ':}', _html);
+        }
+      }
+
+      // Finally add the rendered template file to the html.
+      html += template_file_html;
+
+    }
+    else {
+
+      var weighted = {};
+      var weightedCount = 0;
+      for (var index in content) {
+        if (!content.hasOwnProperty(index)) { continue; }
+        var piece = content[index];
+        var _type = typeof piece;
+        if (_type === 'object' && piece !== null) {
+          if (piece.theme && drupalgap.theme_registry[piece.theme]) { continue; }
+          var weight = typeof piece.weight !== 'undefined' ? piece.weight : 0;
+          if (typeof weighted[weight] === 'undefined') { weighted[weight] = []; }
+          weighted[weight].push(drupalgap_render(piece));
+          weightedCount++;
+        }
+        else if (_type === 'array') {
+          for (var i = 0; i < piece.length; i++) {
+            html += drupalgap_render(piece[i]);
+          }
+        }
+        else if (_type === 'string') { html += piece; }
+      }
+      if (weightedCount) {
+        for (var weight in weighted) {
+          if (!weighted.hasOwnProperty(weight)) { continue; }
+          for (var i = 0; i < weighted[weight].length; i++) {
+            html += weighted[weight][i];
+          }
+        }
+      }
+
+    }
+
+  }
+
+  // Now that we are done assembling the content into an html string, we can
+  // return it.
+  return html;
+}
+
+/**
+ * Returns the path to the current DrupalGap theme, false otherwise.
+ * @return {String|Boolean}
+ */
+function path_to_theme() {
+  try {
+    if (drupalgap.theme_path) {
+      return drupalgap.theme_path;
+    }
+    else {
+      console.log('path_to_theme - drupalgap.theme_path is not set!');
+      return false;
+    }
+  }
+  catch (error) { console.log('path_to_theme - ' + error); }
+}
+
+/**
+ * Implementation of theme().
+ * @param {String} hook
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme(hook, variables) {
+  try {
+
+    // If there is HTML markup present, just return it as is. Otherwise, run
+    // the theme hook and send along the variables.
+    if (!variables) { variables = {}; }
+    if (typeof variables.access !== 'undefined' && !variables.access) { return ''; }
+    if (variables.markup) { return variables.markup; }
+    var content = '';
+    if (!hook) { return content; }
+
+    // First see if the current theme implements the hook, if it does use it, if
+    // it doesn't fallback to the core theme implementation of the hook.
+    var theme_function = drupalgap.settings.theme + '_' + hook;
+    if (!function_exists(theme_function)) {
+      theme_function = 'theme_' + hook;
+
+      // Fail safely an informative message if a bogus hook was passed in.
+      if (!function_exists(theme_function)) {
+        var caller = null;
+        if (arguments.callee.caller) { caller = arguments.callee.caller.name; }
+        var msg = 'WARNING: ' + theme_function + '() does not exist.';
+        if (caller) { msg += ' Called by: ' + caller + '().' }
+        console.log(msg);
+        return content;
+      }
+
+    }
+
+    // If no attributes are coming in, look to variables.options.attributes
+    // as a secondary option, otherwise setup an empty JSON object for them.
+    if (
+      typeof variables.attributes === 'undefined' ||
+      !variables.attributes
+    ) {
+      if (variables.options && variables.options.attributes) {
+        variables.attributes = variables.options.attributes;
+      }
+      else {
+        variables.attributes = {};
+      }
+    }
+    // If there is no class name, set an empty one.
+    if (!variables.attributes['class']) {
+      variables.attributes['class'] = '';
+    }
+    var fn = window[theme_function];
+    content = fn.call(null, variables);
+    return content;
+  }
+  catch (error) { console.log('theme - ' + error); }
+}
+
+/**
+ * Themes a button.
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_button(variables) {
+  try {
+    variables.attributes['data-role'] = 'button';
+    var html = '<a ' + drupalgap_attributes(variables.attributes) + '>' +
+      variables.text +
+    '</a>';
+    return html;
+  }
+  catch (error) { console.log('theme_button_link - ' + error); }
+}
+
+/**
+ * Themes a button link.
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_button_link(variables) {
+  try {
+    variables.attributes['data-role'] = 'button';
+    return theme_link(variables);
+  }
+  catch (error) { console.log('theme_button_link - ' + error); }
+}
+
+/**
+ * Themes a collapsible widget.
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_collapsible(variables) {
+  try {
+    variables.attributes['data-role'] = 'collapsible';
+    var header_type = 'h2';
+    if (variables.header_type) { header_type = variables.header_type; }
+    var header_attributes = {};
+    if (variables.header_attributes) {
+      header_attributes = variables.header_attributes;
+    }
+    var html = '<div ' + drupalgap_attributes(variables.attributes) + '>' +
+      '<' + header_type + ' ' + drupalgap_attributes(header_attributes) + '>' +
+        variables.header +
+      '</' + header_type + '>' + variables.content + '</div>';
+    return html;
+  }
+  catch (error) { console.log('theme_collapsible - ' + error); }
+}
+
+/**
+ * Themes a collapsibleset widget.
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_collapsibleset(variables) {
+  try {
+    variables.attributes['data-role'] = 'collapsible-set';
+    var html = '<div ' + drupalgap_attributes(variables.attributes) + '>';
+    for (var index in variables.items) {
+        if (!variables.items.hasOwnProperty(index)) { continue; }
+        var item = variables.items[index];
+        html += theme('collapsible', item);
+    }
+    html += '</div>';
+    return html;
+  }
+  catch (error) { console.log('theme_collapsibleset - ' + error); }
+}
+
+/**
+ * Themes a controlgroup widget.
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_controlgroup(variables) {
+  try {
+    variables.attributes['data-role'] = 'controlgroup';
+    var html = '<div ' + drupalgap_attributes(variables.attributes) + '>';
+    for (var index in variables.items) {
+      if (!variables.items.hasOwnProperty(index)) { continue; }
+      var item = variables.items[index];
+      html += item;
+    }
+    html += '</div>';
+    return html;
+  }
+  catch (error) { console.log('theme_controlgroup - ' + error); }
+}
+
+/**
+ * Themes a header widget.
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_header(variables) {
+  try {
+    variables.attributes['data-role'] = 'header';
+    if (typeof variables.type == 'undefined') {
+      variables.type = 'h2';
+    }
+    var typeAttrs = variables.type_attributes ?
+      ' ' + drupalgap_attributes(variables.type_attributes) : '';
+    var html = '<div ' + drupalgap_attributes(variables.attributes) + '>' +
+      '<' + variables.type + typeAttrs + '>' + variables.text + '</' + variables.type + '></div>';
+    return html;
+  }
+  catch (error) { console.log('theme_header - ' + error); }
+}
+
+/**
+ * Implementation of theme_image().
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_image(variables) {
+  try {
+    // Turn the path, alt and title into attributes if they are present.
+    if (variables.path) { variables.attributes.src = variables.path; }
+    if (variables.alt) { variables.attributes.alt = variables.alt; }
+    if (variables.title) { variables.attributes.title = variables.title; }
+    // Render the image.
+    return '<img ' + drupalgap_attributes(variables.attributes) + ' />';
+  }
+  catch (error) { console.log('theme_image - ' + error); }
+}
+
+
+/**
+ * Implementation of theme_audio().
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_audio(variables) {
+  try {
+    // Turn the path, alt and title into attributes if they are present.
+    if (variables.path) { variables.attributes.src = variables.path; }
+    if (variables.alt) { variables.attributes.alt = variables.alt; }
+    if (variables.title) { variables.attributes.title = variables.title; }
+    // Render the audio player.
+    return '<audio controls ' + drupalgap_attributes(variables.attributes) +
+    '></audio>';
+  }
+  catch (error) { console.log('theme_audio - ' + error); }
+}
+
+/**
+ * Implementation of theme_video().
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_video(variables) {
+  try {
+    // Turn the path, alt and title into attributes if they are present.
+    if (variables.path) { variables.attributes.src = variables.path; }
+    if (variables.alt) { variables.attributes.alt = variables.alt; }
+    if (variables.title) { variables.attributes.title = variables.title; }
+    // Add the 'webkit-playsinline' attribute on iOS devices if no one made a
+    // decision about it being there or not.
+    if (
+      typeof device !== 'undefined' &&
+      device.platform == 'iOS' &&
+      typeof variables.attributes['webkit-playsinline'] === 'undefined'
+    ) { variables.attributes['webkit-playsinline'] = ''; }
+    // Render the video player.
+    return '<video ' + drupalgap_attributes(variables.attributes) +
+    '></video>';
+  }
+  catch (error) { console.log('theme_video - ' + error); }
+}
+
+/**
+ * Implementation of theme_image_style().
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_image_style(variables) {
+  try {
+    variables.path = image_style_url(variables.style_name, variables.path);
+    return theme_image(variables);
+  }
+  catch (error) { console.log('theme_image - ' + error); }
+}
+
+/**
+ * Theme's an item from an MVC collection.
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_item(variables) {
+  try {
+    var html = '';
+    for (var field in variables.item) {
+        if (!variables.item.hasOwnProperty(field)) { continue; }
+        var value = variables.item[field];
+        html +=
+          '<h2>' + variables.model.fields[field].title + '</h2>' +
+          '<p>' + value + '</p>';
+    }
+    return html;
+  }
+  catch (error) { console.log('theme_item - ' + error); }
+}
+
+/**
+ * Implementation of theme_item_list().
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_item_list(variables) {
+  try {
+    // We'll theme an empty list unordered list by default, if there is a type
+    // of list specified we'll use that, and if there are some items we'll
+    // theme them too.
+    var type = 'ul';
+    if (variables.type) { type = variables.type; }
+    var html = '';
+    if (variables.title) { html += '<h2>' + variables.title + '</h2>'; }
+    html += '<' + type + ' ' +
+      drupalgap_attributes(variables.attributes) + '>';
+    if (variables.items && variables.items.length > 0) {
+      var listview = typeof variables.attributes['data-role'] !== 'undefined' &&
+        variables.attributes['data-role'] == 'listview';
+      for (var index = 0; index < variables.items.length; index++) {
+        var item = variables.items[index];
+        if (typeof item === 'string') {
+          var icon = null;
+          html += '<li';
+          if (listview && (icon = $(item).attr('data-icon'))) {
+            // If we're in a listview and the item specifies an icon,
+            // add the icon attribute to the list item element.
+            html += ' data-icon="' + icon + '"';
+          }
+          html += '>' + item + '</li>';
+        }
+        else if (typeof item === 'object') {
+          var attributes = item.attributes ? item.attributes : {};
+          var content = item.content ? item.content : '';
+          html += '<li ' + drupalgap_attributes(attributes) + '>' + drupalgap_render(content) + '</li>';
+        }
+      }
+    }
+    html += '</' + type + '>';
+    return html;
+  }
+  catch (error) { console.log('theme_item_list - ' + error); }
+}
+
+/**
+ * Identical to theme_item_list, except this turns the list into a jQM listview.
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_jqm_item_list(variables) {
+  try {
+    if (variables.attributes) {
+      if (
+        variables.attributes['data-role'] &&
+        variables.attributes['data-role'] != 'listview'
+      ) { }
+      else {
+        variables.attributes['data-role'] = 'listview';
+      }
+    }
+    else {
+      variables.attributes['data-role'] = 'listview';
+    }
+    return theme_item_list(variables);
+  }
+  catch (error) { console.log('theme_jqm_item_list - ' + error); }
+}
+
+/**
+ * Implementation of theme_link().
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_link(variables) {
+  try {
+    var text = '';
+    if (variables.text) { text = variables.text; }
+    if (typeof variables.path !== 'undefined' && variables.path != null) {
+
+      // If the path begins with a hashtag, just render the link as is with the
+      // hashtag for the href.
+      if (variables.path.indexOf('#') == 0) {
+        variables.attributes['href'] = variables.path;
+        return '<a ' + drupalgap_attributes(variables.attributes) + '>' +
+          text +
+        '</a>';
+      }
+
+      // By default our onclick will use a drupalgap_goto(). If we have any
+      // incoming link options, then modify the link accordingly.
+      var onclick = 'drupalgap_goto(\'' + variables.path + '\');';
+      if (variables.options) {
+
+        // Use an InAppBrowser?
+        if (variables.options.InAppBrowser) {
+          onclick =
+            "window.open('" + variables.path + "', '_blank', 'location=yes');";
+        }
+
+        else {
+
+          // Prepare the path.
+          variables.path = _drupalgap_goto_prepare_path(variables.path);
+
+          // All other options need to be extracted into a JSON string for the
+          // onclick handler.
+
+          var goto_options = '';
+          for (var option in variables.options) {
+              if (!variables.options.hasOwnProperty(option)) { continue; }
+              var value = variables.options[option];
+              if (option == 'attributes') { continue; }
+              if (typeof value === 'string') { value = "'" + value + "'"; }
+              goto_options += option + ':' + value + ',';
+          }
+          onclick =
+            'drupalgap_goto(\'' +
+              variables.path + '\', ' +
+              '{' + goto_options + '});';
+
+        }
+      }
+
+      // Is this link active?
+      if (variables.path == drupalgap_path_get()) {
+        if (variables.attributes['class'].indexOf('ui-btn-active') == -1) {
+          variables.attributes['class'] += ' ui-btn-active ';
+        }
+        if (variables.attributes['class'].indexOf('ui-state-persist') == -1) {
+          variables.attributes['class'] += ' ui-state-persist ';
+        }
+      }
+
+      // Finally, return the link.
+      return '<a href="#" onclick="javascript:' + onclick + '"' +
+        drupalgap_attributes(variables.attributes) + '>' + text + '</a>';
+
+    }
+    else {
+
+      // The link has no path, so just render the text and attributes.
+      if (typeof variables.attributes.href === 'undefined') {
+        variables.attributes.href = '#';
+      }
+      return '<a ' + drupalgap_attributes(variables.attributes) + '>' +
+        text +
+      '</a>';
+
+    }
+  }
+  catch (error) { console.log('theme_link - ' + error); }
+}
+
+/**
+ * Themes the logout button.
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_logout(variables) {
+  try {
+    return bl(
+      t('Logout'),
+      'user/logout',
+      {
+        attributes: {
+          'data-icon': 'action',
+          'data-iconpos': 'right'
+        }
+      }
+    );
+  }
+  catch (error) { console.log('theme_logout - ' + error); }
+}
+
+/**
+ * Themes a popup widget.
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_popup(variables) {
+  try {
+    variables.attributes['data-role'] = 'popup';
+    var button_attributes = {};
+    if (variables.button_attributes) {
+      button_attributes = variables.button_attributes;
+    }
+    button_attributes.href = '#' + variables.attributes.id;
+    button_attributes['data-rel'] = 'popup';
+    var html = bl(variables.button_text, null, {
+        attributes: button_attributes
+    }) +
+    '<div ' + drupalgap_attributes(variables.attributes) + '>' +
+      variables.content +
+    '</div>';
+    return html;
+  }
+  catch (error) { console.log('theme_popup - ' + error); }
+}
+
+/**
+ * Implementation of theme_submit().
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_submit(variables) {
+  try {
+    return '<button ' + drupalgap_attributes(variables.attributes) + '>' +
+      variables.element.value +
+    '</button>';
+  }
+  catch (error) { console.log('theme_submit - ' + error); }
+}
+
+/**
+ * Implementation of theme_table().
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_table(variables) {
+  try {
+    var html = '<table ' + drupalgap_attributes(variables.attributes) + '>';
+    if (variables.header) {
+      html += '<thead><tr>';
+      for (var index in variables.header) {
+          if (!variables.header.hasOwnProperty(index)) { continue; }
+          var column = variables.header[index];
+          if (column.data) {
+            html += '<td>' + column.data + '</td>';
+          }
+      }
+      html += '</tr></thead>';
+    }
+    html += '<tbody>';
+    if (variables.rows) {
+      for (var row_index in variables.rows) {
+          if (!variables.rows.hasOwnProperty(row_index)) { continue; }
+          var row = variables.rows[row_index];
+          html += '<tr>';
+          if (row) {
+            for (var column_index in row) {
+              if (!row.hasOwnProperty(column_index)) { continue; }
+              var column = row[column_index];
+              html += '<td>' + column + '</td>';
+            }
+          }
+          html += '</tr>';
+      }
+    }
+    return html + '</tbody></table>';
+  }
+  catch (error) { console.log('theme_table - ' + error); }
+}
+
+/**
+ * Theme a jQueryMobile table.
+ * @param {Object} variables
+ * @return {String}
+ */
+function theme_jqm_table(variables) {
+  try {
+    variables.attributes['data-role'] = 'table';
+    variables.attributes['data-mode'] = 'reflow';
+    return theme_table(variables);
+  }
+  catch (error) { console.log('theme_jqm_table - ' + error); }
+}
+
+
+/**
+ * An interal callback used to handle the setting of the page title during the
+ * pageshow event.
+ * @param {*} page_arguments
+ */
+function _drupalgap_page_title_pageshow(page_arguments) {
+  try {
+    var router_path = drupalgap_router_path_get();
+    // Set the page title. First we'll see if the hook_menu() item has a
+    // title variable set, then check for a title_callback function.
+    var title_arguments = [];
+    if (typeof drupalgap.menu_links[router_path].title !== 'undefined') {
+      drupalgap_set_title(drupalgap.menu_links[router_path].title);
+    }
+    if (
+      typeof drupalgap.menu_links[router_path].title_callback !== 'undefined'
+    ) {
+      var function_name = drupalgap.menu_links[router_path].title_callback;
+      if (function_exists(function_name)) {
+        // Grab the title callback function.
+        var fn = window[function_name];
+        // Place the internal success callback handler on the front of the
+        // title arguments.
+        title_arguments.unshift(_drupalgap_page_title_pageshow_success);
+        // Are there any additional arguments to send to the title callback?
+        if (drupalgap.menu_links[router_path].title_arguments) {
+          // For each title argument, if the argument is an integer, grab the
+          // corresponding arg(#), otherwise just push the arg onto the title
+          // arguments.
+          var args = arg(null, drupalgap_path_get());
+          var _title_arguments = drupalgap.menu_links[router_path].title_arguments;
+          for (var index in _title_arguments) {
+              if (!_title_arguments.hasOwnProperty(index)) { continue; }
+              var object = _title_arguments[index];
+              if (is_int(object) && args[object]) {
+                title_arguments.push(args[object]);
+              }
+              else { title_arguments.push(object); }
+          }
+        }
+        // Call the title callback function with the title arguments.
+        drupalgap_set_title(
+          fn.apply(
+            null,
+            Array.prototype.slice.call(title_arguments)
+          )
+        );
+      }
+    }
+    else {
+      _drupalgap_page_title_pageshow_success(drupalgap_get_title());
+    }
+  }
+  catch (error) { console.log('_drupalgap_page_title_pageshow - ' + error); }
+}
+
+/**
+ * An internal function used to set the page title when the page title callback
+ * function is successful.
+ * @param {String} title
+ */
+function _drupalgap_page_title_pageshow_success(title) {
+  try {
+    var id = system_title_block_id(drupalgap_path_get());
+    $('h1#' + id).html(title);
+  }
+  catch (error) {
+    console.log('_drupalgap_page_title_pageshow_success - ' + error);
+  }
+}
+
+
+function theme_jqm_grid(variables) {
+  if (!variables.items || !variables.items.length) { return ''; }
+
+  var html = '';
+
+  // Determine columns, and jqm grid type and css class..
+  var columns = jqm_grid_verify_columns(variables);
+  var grid = jqm_grid_get_type(columns);
+  variables.attributes.class += ' ui-grid-' + grid + ' ';
+
+  var open = '<div ' + drupalgap_attributes(variables.attributes) + '>';
+  var close = '</div>';
+  var open_row = '<div class="ui-block">'; // This class will be replaced dynamically.
+  var close_row = '</div>';
+
+  html += open;
+  for (var i = 0; i < variables.items.length; i++) {
+    var className = jqm_grid_get_item_class(i, columns);
+    var openRow = jqm_grid_set_item_row_class(open_row, className);
+    html += openRow + variables.items[i] + close_row;
+  }
+  html += close;
+
+  return html;
+}
+
+function jqm_grid_verify_columns(variables) {
+  var columns = variables.columns ? variables.columns : 2;
+  var msg = null;
+  if (columns < 2) {
+    msg = columns + ' columns is not enough, a minimum of 2 is needed';
+    columns = 2;
+  }
+  if (columns > 5) {
+    msg = columns + ' columns is too many enough, a maximum of 5 is allowed';
+    columns = 5;
+  }
+  variables.columns = columns;
+  if (msg) { console.log('jqm_grid_verify_columns - ' + msg); }
+  return variables.columns;
+}
+
+function jqm_grid_get_type(columns) {
+  var grid = null;
+  switch (columns) {
+    case 2: grid = 'a'; break;
+    case 3: grid = 'b'; break;
+    case 4: grid = 'c'; break;
+    case 5: grid = 'd'; break;
+  }
+  return grid;
+}
+
+function jqm_grid_get_item_class(index, columns) {
+  var className = null;
+  switch (index % columns) {
+    case 0: className = 'ui-block-a'; break;
+    case 1: className = 'ui-block-b'; break;
+    case 2: className = 'ui-block-c'; break;
+    case 3: className = 'ui-block-d'; break;
+    case 4: className = 'ui-block-e'; break;
+  }
+  return className
+}
+
+function jqm_grid_set_item_row_class(open_row, className) {
+  var openRow = JSON.parse(JSON.stringify(open_row)); // Make a copy of the string.
+  if (className) { openRow = openRow.replace('ui-block', className); }
+  return openRow;
+}
 
 /**
  * Given a form element, this will return true if access to the element is
@@ -2731,7 +5553,7 @@ function _drupalgap_form_render_element(form, element) {
     if (module) {
       field_widget_form_function_name = module + '_field_widget_form';
 
-      if (drupalgap_function_exists(field_widget_form_function_name)) {
+      if (function_exists(field_widget_form_function_name)) {
         field_widget_form_function = window[field_widget_form_function_name];
       }
       else {
@@ -2807,9 +5629,10 @@ function _drupalgap_form_render_element(form, element) {
         // if it wasn't already set, otherwise set it to the item's value.
         if (!item.default_value) { item.default_value = ''; }
         variables.attributes.value = item.default_value;
-        if (typeof item.value !== 'undefined' && typeof variables.attributes.value === 'undefined') {
-          variables.attributes.value = item.value;
-        }
+        if (
+            typeof item.value !== 'undefined' &&
+            (typeof variables.attributes.value === 'undefined' || empty(variables.attributes.value))
+        ) { variables.attributes.value = item.value; }
 
         // Call the hook_field_widget_form() if necessary. Merge any changes
         // to the item back into this item.
@@ -2916,12 +5739,19 @@ function _drupalgap_form_render_element(form, element) {
       }
     }
 
-    // Add the item html if it isn't empty.
-    if (item_html != '') { html += item_html; }
-
-    // Add element description.
-    if (element.description && element.type != 'hidden') {
-      html += '<div class="description">' + t(element.description) + '</div>';
+    // Add the item html if it isn't empty. Place the description "before" or "after" the item, exclude it if set
+    // to "none".
+    if (item_html != '') {
+      if (element.description && element.type != 'hidden') {
+        var descriptionDisplay = element.description_display ? element.description_display : 'after';
+        var descriptionHtml = '<div class="description">' + t(element.description) + '</div>';
+        switch (descriptionDisplay) {
+          case 'before': html += descriptionHtml + item_html; break;
+          case 'after': html += item_html + descriptionHtml; break;
+          case 'none': html += item_html; break;
+        }
+      }
+      else { html += item_html; }
     }
 
     // Close the element container.
@@ -3002,7 +5832,7 @@ function _drupalgap_form_render_element_item(form, element, variables, item) {
 
     // Run the item through the theme system if a theme function exists, or try
     // to use the item markup, or let the user know the field isn't supported.
-    if (drupalgap_function_exists('theme_' + theme_function)) {
+    if (function_exists('theme_' + theme_function)) {
       html += theme(theme_function, variables);
     }
     else {
@@ -3218,11 +6048,11 @@ function drupalgap_form_defaults(form_id) {
     form.validate = [];
     form.submit = [];
     var validate_function_name = form.id + '_validate';
-    if (drupalgap_function_exists(validate_function_name)) {
+    if (function_exists(validate_function_name)) {
       form.validate.push(validate_function_name);
     }
     var submit_function_name = form.id + '_submit';
-    if (drupalgap_function_exists(submit_function_name)) {
+    if (function_exists(submit_function_name)) {
       form.submit.push(submit_function_name);
     }
     // Finally, return the form.
@@ -3391,7 +6221,7 @@ function drupalgap_form_load(form_id) {
 
     // The form's call back function will be equal to the form id.
     var function_name = form_id;
-    if (drupalgap_function_exists(function_name)) {
+    if (function_exists(function_name)) {
 
       // Grab the form's function.
       var fn = window[function_name];
@@ -3555,7 +6385,7 @@ function _drupalgap_form_load_set_element_defaults(form, language) {
       }
     }
   }
-  catch (error) { console.log('_drupalgap_form_elements_set_defaults - ' + error); }
+  catch (error) { console.log('_drupalgap_form_load_set_element_defaults - ' + error); }
 }
 
 /**
@@ -3563,11 +6393,13 @@ function _drupalgap_form_load_set_element_defaults(form, language) {
  * attempt to listen for the enter key being pressed and submit the form at that
  * time.
  * @param {String} form_id
+ * @param {Object} event
  * @return {Boolean}
  */
-function drupalgap_form_onkeypress(form_id) {
+function drupalgap_form_onkeypress(form_id, event) {
   try {
-    var event = window.event;
+    var event = event ? event : window.event;
+    if (!event) { return; }
     var charCode = event.which || event.keyCode;
     if (charCode != '13') { return; }
     $('#' + form_id + ' button.dg_form_submit_button').click();
@@ -4203,2612 +7035,34 @@ function theme_textarea(variables) {
 }
 
 
-// Holds onto any query string during the page go process.
-var _drupalgap_goto_query_string = null;
-
-/**
- * Given a path, this will change the current page in the app.
- * @param {String} path
- * @return {*}
- */
-function drupalgap_goto(path) {
-  try {
-
-    // Extract any incoming options, set any defaults that weren't provided,
-    // then populate the global page options variable.
-    var options = {};
-    if (arguments[1]) {
-      options = arguments[1];
-      if (typeof options.form_submission === 'undefined') {
-        options.form_submission = false;
-      }
-    }
-    drupalgap.page.options = options;
-
-    // Prepare the path.
-    path = _drupalgap_goto_prepare_path(path, true);
-    if (!path) { return false; }
-
-    // Invoke all implementations of hook_drupalgap_goto_preprocess().
-    module_invoke_all('drupalgap_goto_preprocess', path);
-
-    // Determine the router path.
-    var router_path = drupalgap_get_menu_link_router_path(path);
-
-    // Make sure we have a menu link item that can handle this router path,
-    // otherwise we'll goto the 404 page.
-    if (!drupalgap.menu_links[router_path]) {
-      // Is anyone trying to handle this 404?
-      var new_path = false;
-      var invocation_results = module_invoke_all('404', router_path);
-      if (invocation_results) {
-        for (var index in invocation_results) {
-            if (!invocation_results.hasOwnProperty(index)) { continue; }
-            var result = invocation_results[index];
-            if (result !== false) {
-              new_path = result;
-              break;
-            }
-        }
-      }
-      // If a 404 handler provided a new path use it, otherwise just use the
-      // system 404 page. Either way, update the router path before continuing
-      // with a normal page build.
-      if (new_path) { path = new_path; }
-      else { path = '404'; }
-      router_path = drupalgap_get_menu_link_router_path(path);
-    }
-
-    // Make sure the user has access to this router path, if they don't send
-    // them to the 401 page.
-    // @TODO - for now we're going to skip access checks on local tasks, since
-    // they are covered by menu_block_view(), but if someone were to navigate
-    // directly to e.g. a node's edit page, they would be able to see the page.
-    // Of course Drupal would actually prevent them from updating the node on
-    // the live site, but nonetheless this needs to be fixed. It's a tough issue
-    // though and related to https://github.com/signalpoint/DrupalGap/issues/257
-    if (
-      drupalgap.menu_links[router_path].type != 'MENU_DEFAULT_LOCAL_TASK' &&
-      drupalgap.menu_links[router_path].type != 'MENU_LOCAL_TASK' &&
-      !drupalgap_menu_access(router_path)
-    ) {
-      path = '401';
-      router_path = drupalgap_get_menu_link_router_path(path);
-    }
-
-    // If the new router path is the same as the current router path and the new
-    // path is the same as the current path, we may need to cancel the
-    // navigation attempt (i.e. don't go anywhere), unless it is a
-    // form submission, then continue.
-    if (
-      router_path == drupalgap_router_path_get() &&
-      path == drupalgap_path_get()
-    ) {
-      // If it's a form submission, we'll continue onward...
-      if (options.form_submission) { }
-
-      // If we're reloading the current page, we need to set aside this path
-      // and navigate to the system's _reload page, which will then handle the
-      // actual reloading of the page.
-      // @see system_drupalgap_goto_post_process()
-      else if (options.reloadPage) {
-        _system_reload_page = path;
-        path = '_reload';
-        router_path = drupalgap_get_menu_link_router_path(path);
-      }
-
-      // Otherwise, just stop the navigation attempt.
-      else { return false; }
-
-    }
-
-    // Grab the page id.
-    var page_id = drupalgap_get_page_id(path);
-
-    // Return if we are trying to go to the path we are already on, unless this
-    // was a form submission, then we'll let the page rebuild itself. For
-    // accuracy we compare the jQM active page url with the destination page
-    // id.
-    // @todo - this boolean doesn't match the comment description of the code
-    // block, i.e. the form_submission check is opposite of what it says
-    if (drupalgap_jqm_active_page_url() == page_id && options.form_submission) {
-      // Clear any messages from the page before returning.
-      drupalgap_clear_messages();
-      return false;
-    }
-
-    // @TODO when drupalgap_goto() is called during the bootstrap, we shouldn't
-    // put the path onto the back_path array.
-
-    // Save the back path.
-    var back_paths_to_ignore = ['user/logout', '_reload'];
-    if (!in_array(drupalgap_path_get())) {
-      drupalgap.back_path.push(drupalgap_path_get());
-    }
-
-    // Set the current menu path to the path input.
-    drupalgap_path_set(path);
-
-    // Set the drupalgap router path.
-    drupalgap_router_path_set(router_path);
-
-    // If the page is already in the DOM and we're asked to reload it, then
-    // remove the page and let it rebuild itself. If we're not reloading the
-    // page and we're not in the middle of a form submission, prevent the page
-    // from processing then change to it.
-    if (drupalgap_page_in_dom(page_id)) {
-
-      // If there are any hook_menu() item options for this router path, bring
-      // them into the current options without overwriting any existing values.
-      if (drupalgap.menu_links[router_path].options) {
-        options = $.extend(
-          {},
-          drupalgap.menu_links[router_path].options,
-          options
-        );
-      }
-
-      // Reload the page? If so, remove the page from the DOM, delete the
-      // reloadPage option, then set the reloadingPage option to true so others
-      // down the line will know the page is reloading. We can't pass along the
-      // actual reloadPage option since it may collide with jQM later on. We
-      // have to use 'force' when removing the page from the DOM since DG won't
-      // remove it since it thinks we are already on the page, so it won't
-      // remove it.
-      if (typeof options.reloadPage !== 'undefined' && options.reloadPage) {
-        // @TODO we may need to leave the query ONLY if the above call to
-        // _drupalgap_goto_prepare_path() yielded a query string, otherwise we
-        // may be leaving unwanted queries in _GET()!
-        var leaveQuery = _drupalgap_goto_query_string ? true : false;
-        drupalgap_remove_page_from_dom(page_id, {
-          force: true,
-          leaveQuery: leaveQuery
-        });
-        delete options.reloadPage;
-        options.reloadingPage = true;
-      }
-      else if (!options.form_submission) {
-        drupalgap_clear_messages();
-        _drupalgap_goto_query_string = null;
-        drupalgap.page.process = false;
-        // @TODO changePage has been deprecated as of jQM 1.4.0 and will be
-        // removed in 1.50.
-        // @see https://api.jquerymobile.com/jQuery.mobile.changePage/
-        $.mobile.changePage('#' + page_id, options);
-        module_invoke_all('drupalgap_goto_post_process', path);
-        return;
-      }
-    }
-    else if (typeof options.reloadPage !== 'undefined' && options.reloadPage) {
-      // The page is not in the DOM, and we're being asked to reload it, so
-      // we'll just delete the reloadPage option.
-      delete options.reloadPage;
-    }
-
-    // Generate the page.
-    drupalgap_goto_generate_page_and_go(path, page_id, options, drupalgap.menu_links[router_path]);
-  }
-  catch (error) { console.log('drupalgap_goto - ' + error); }
-}
-
-/**
- * Generate a JQM page by running it through the theme then attach the
- * page to the <body> of the document, then change to the page. Remember,
- * the rendering of the page does not take place here, that is covered by
- * the pagebeforechange event in theme.inc.js which happens after we change
- * the page here.
- * @param {String} path
- * @param {String} page_id
- * @param {Object} options
- * @param {Object} menu_link The menu link object from drupalgap.menu_links.
- */
-function drupalgap_goto_generate_page_and_go(
-  path, page_id, options, menu_link) {
-  try {
-
-    // @TODO using a page.tpl.html is pretty dumb, this makes a disc read on each page change, use render arrays only
-    // be deprecating the page.tpl.html file, converting it to a render array and warning developers to upgrade their
-    // themes.
-    var page_template_path = path_to_theme() + '/page.tpl.html';
-    if (!drupalgap_file_exists(page_template_path)) {
-      console.log(
-        'drupalgap_goto_generate_page_and_go - ' +
-        'page template does not exist! (' + page_template_path + ')'
-      );
-    }
-    else {
-
-      // Reset the internal query string.
-      _drupalgap_goto_query_string = null;
-
-      // If options wasn't set, set it as an empty JSON object.
-      if (typeof options === 'undefined') { options = {}; }
-
-      // Load the page template html file. Determine if we are going to cache
-      // the template file or not.
-      // @TODO another disc read here, dumb, use render arrays and deprecate.
-      var file_options = {};
-      if (drupalgap.settings.cache &&
-          drupalgap.settings.cache.theme_registry !== 'undefined' &&
-          !drupalgap.settings.cache.theme_registry) {
-          file_options.cache = false;
-       }
-      var html = drupalgap_file_get_contents(page_template_path, file_options);
-
-      if (html) {
-
-        // Add page to DOM.
-        drupalgap_add_page_to_dom({
-            page_id: page_id,
-            html: html,
-            menu_link: menu_link
-        });
-
-        // Setup change page options if necessary.
-        if (drupalgap_path_get() == path && options.form_submission) {
-          options.allowSamePageTransition = true;
-        }
-
-        // Let's change to the page. Web apps and the ripple emulator do not
-        // seem to like the 'index.html' prefix, so we'll remove that.
-        var destination = 'index.html#' + page_id;
-        if (
-          drupalgap.settings.mode != 'phonegap' ||
-          typeof parent.window.ripple === 'function'
-        ) { destination = '#' + page_id; }
-        $.mobile.changePage(destination, options); // @see the pagebeforechange handler in page.inc.js
-
-        // Invoke all implementations of hook_drupalgap_goto_post_process().
-        module_invoke_all('drupalgap_goto_post_process', path);
-      }
-      else {
-        drupalgap_alert(
-          'drupalgap_goto_generate_page_and_go - ' +
-          t('failed to load theme\'s page.tpl.html file')
-        );
-      }
-    }
-  }
-  catch (error) {
-    console.log('drupalgap_goto_generate_page_and_go - ' + error);
-  }
-}
-
-/**
- * Prepares a drupalgap page path.
- * @deprecated Use _drupalgap_goto_prepare_path() instead.
- * @param {String} path
- * @return {String}
- */
-function drupalgap_goto_prepare_path(path) {
-  try {
-    console.log('WARNING - drupalgap_goto_prepare_path() is deprecated, ' +
-      'use _drupalgap_goto_prepare_path() instead!');
-    return _drupalgap_goto_prepare_path(path);
-  }
-  catch (error) { console.log('drupalgap_goto_prepare_path - ' + error); }
-}
-
-/**
- * An internal function used to prepare the path for menu routing. An optional
- * second parameter (boolean) may be passed in, and if it is set to true it will
- * process any _GET query string parameters.
- * @param {String} path
- * @return {String}
- */
-function _drupalgap_goto_prepare_path(path) {
-  try {
-
-    // Pull out any query string parameters and populate them into _GET, if we
-    // were instructed to do so. Hold onto a global copy of the query string
-    // for page go processing.
-    if (typeof arguments[1] !== 'undefined' && arguments[1]) {
-      var pos = path.indexOf('?');
-      if (pos != -1 && pos != path.length - 1) {
-        var query = path.substr(pos + 1, path.length - pos);
-        _drupalgap_goto_query_string = query;
-        path = path.substr(0, pos);
-        var parts = query.split('&');
-        for (var i = 0; i < parts.length; i++) {
-          pos = parts[i].indexOf('=');
-          if (pos == -1) { continue; }
-          query = parts[i].split('=');
-          if (query.length != 2) { continue; }
-          _GET(
-            decodeURIComponent(query[0]),
-            decodeURIComponent(query[1]),
-            path
-          );
-        }
-      }
-    }
-
-    // If the path is an empty string, change it to the front page path.
-    if (path == '') {
-      if (!drupalgap.settings.front) {
-        drupalgap_alert(
-          'drupalgap_goto_prepare_path - ' +
-          t('no front page specified in settings.js!')
-        );
-        return false;
-      }
-      else { path = drupalgap.settings.front; }
-    }
-
-    // Change 'user' to 'user/login' for anonymous users, or change it to e.g.
-    // 'user/123' for authenticated users.
-    else if (path == 'user') {
-      if (Drupal.user.uid != 0) { path = 'user/' + Drupal.user.uid; }
-      else { path = 'user/login'; }
-    }
-
-    // Finally return the path.
-    return path;
-
-  }
-  catch (error) { console.log('drupalgap_goto_prepare_path - ' + error); }
-}
-
-/**
- * Change the page to the previous page.
- */
-function drupalgap_back() {
-  try {
-    var active_page_id = $('.ui-page-active').attr('id');
-    if (active_page_id == drupalgap.settings.front) {
-      var msg = t('Exit') + ' ' + drupalgap.settings.title + '?';
-      if (drupalgap.settings.exit_message) {
-        msg = drupalgap.settings.exit_message;
-      }
-      drupalgap_confirm(msg, {
-          confirmCallback: _drupalgap_back_exit
-      });
-    }
-    else if (active_page_id == '_drupalgap_splash') { return; }
-    else { _drupalgap_back(); }
-  }
-  catch (error) { console.log('drupalgap_back - ' + error); }
-}
-
-/**
- * An internal function used to change the page to the previous page.
- */
-function _drupalgap_back() {
-  try {
-    // @WARNING - any changes here (except the history.back() call) need to be
-    // reflected into the window "navigate" handler below
-    drupalgap.back = true;
-
-    // Properly handle iOS9 back button clicks, and default back button clicks.
-    if (typeof device !== 'undefined' && device.platform === "iOS" && parseInt(device.version) === 9) {
-      $.mobile.back();
-    }
-    else { history.back(); }
-
-    // Update the path and router path.
-    var from = drupalgap_path_get();
-    drupalgap_path_set(drupalgap.back_path.pop());
-    var to = drupalgap_path_get();
-    drupalgap_router_path_set(drupalgap_get_menu_link_router_path(to));
-    module_invoke_all('drupalgap_back', from, to);
-
-  }
-  catch (error) { console.log('_drupalgap_back - ' + error); }
-}
-
-/**
- * An internal function used to exit the app when the back button is clicked.
- * @param {Number} button Which button was pressed.
- */
-function _drupalgap_back_exit(button) {
-  try {
-    button === 1 ? navigator.app.exitApp() : '';
-  }
-  catch (error) { console.log('_drupalgap_back_exit - ' + error); }
-}
-
-$(window).on('navigate', function(event, data) {
-
-    // If we're already moving backwards (aka from a "soft" back button click),
-    // then don't do anything.
-    if (drupalgap.back) { return; }
-
-    // In web-app mode, clicking the back button on your browser (or Android
-    // device browser), does not actually fire drupalgap_back(), so we mimic
-    // it here, but skip the history.back() call because that's already
-    // happened via the hardware button.
-    if (drupalgap.settings.mode == 'web-app') {
-      // Grab the direction we're travelling.
-      // back, forward (or undefined, aka moving from splash to front page)
-      var direction = data.state.direction;
-      if (direction == 'back' && drupalgap.back_path.length > 0) {
-        // @WARNING - any changes here should be reflected into _drupalgap_back().
-        drupalgap.back = true;
-        // Update the path and router path.
-        var from = drupalgap_path_get();
-        drupalgap_path_set(drupalgap.back_path.pop());
-        var to = drupalgap_path_get();
-        drupalgap_router_path_set(drupalgap_get_menu_link_router_path(to));
-        module_invoke_all('drupalgap_back', from, to);
-      }
-    }
-
-});
-
-
-/**
- * Execute the page callback associated with the current path and return its
- * content.
- * @return {Object}
- */
-function menu_execute_active_handler() {
-  try {
-
-    // Determine the path and then grab the page id.
-    var path = null;
-    if (arguments[0]) { path = arguments[0]; }
-    if (!path) { path = drupalgap_path_get(); }
-    var page_id = drupalgap_get_page_id(path);
-
-    // @todo - Make sure the user has access to this DrupalGap menu path!
-
-    // Get the router path.
-    var router_path = drupalgap_router_path_get();
-
-    if (!router_path) { return; }
-
-    // Call the page call back for this router path and send along any
-    // arguments.
-    var function_name = drupalgap.menu_links[router_path].page_callback;
-    var page_arguments = [];
-    if (drupalgap_function_exists(function_name)) {
-
-      // Grab the page callback function and get ready to build the html.
-      var fn = window[function_name];
-      var content = '';
-
-      // Are there any arguments to send to the page callback?
-      if (drupalgap.menu_links[router_path].page_arguments) {
-        // For each page argument, if the argument is an integer, grab the
-        // corresponding arg(#), otherwise just push the arg onto the page
-        // arguments. Then try to prepare any entity that may be present in
-        // the url so the entity is sent via the page arguments to the page
-        // callback, instead of just sending the integer.
-        var args = arg(null, path);
-        for (var index in drupalgap.menu_links[router_path].page_arguments) {
-            if (!drupalgap.menu_links[router_path].page_arguments.hasOwnProperty(index)) { continue; }
-            var object = drupalgap.menu_links[router_path].page_arguments[index];
-            if (is_int(object) && args[object]) {
-              page_arguments.push(args[object]);
-            }
-            else { page_arguments.push(object); }
-        }
-
-        // Call the page callback function with the page arguments.
-        content = fn.apply(null, Array.prototype.slice.call(page_arguments));
-      }
-      else {
-        // There are no arguments, just return the page callback result.
-        content = fn();
-      }
-
-      // If the content came back as a string, convert it to a render object
-      // so any jQM page events can be attached to the content if necessary.
-      if (typeof content === 'string') {
-        content = {
-          content: {
-            markup: content
-          }
-        };
-      }
-
-      // Clear out any previous jQM page events, then if there are any jQM
-      // event callback functions attached to the menu link for this page, set
-      // each event up to be fired with inline JS on the page. We pass along
-      // any page arguments to the jQM event handler function.
-      drupalgap.page.jqm_events = [];
-      var jqm_page_events = drupalgap_jqm_page_events();
-      var jqm_page_event_args = null;
-      if (page_arguments.length > 0) {
-        jqm_page_event_args = JSON.stringify(page_arguments);
-      }
-      for (var i = 0; i < jqm_page_events.length; i++) {
-        if (drupalgap.menu_links[router_path][jqm_page_events[i]]) {
-          var jqm_page_event = jqm_page_events[i];
-          var jqm_page_event_callback =
-            drupalgap.menu_links[router_path][jqm_page_event];
-          if (drupalgap_function_exists(jqm_page_event_callback)) {
-            var options = {
-              'page_id': page_id,
-              'jqm_page_event': jqm_page_event,
-              'jqm_page_event_callback': jqm_page_event_callback,
-              'jqm_page_event_args': jqm_page_event_args
-            };
-            content[jqm_page_event] = {
-              markup: drupalgap_jqm_page_event_script_code(options)
-            };
-          }
-          else {
-            console.log(
-              'menu_execute_active_handler (' + path + ') - the jQM ' +
-              jqm_page_event + ' call back function ' +
-              jqm_page_event_callback + ' does not exist!'
-            );
-          }
-        }
-      }
-
-      // Add a pageshow handler for the page title.
-      if (typeof content === 'object') {
-        var options = {
-          'page_id': page_id,
-          'jqm_page_event': 'pageshow',
-          'jqm_page_event_callback': '_drupalgap_page_title_pageshow',
-          'jqm_page_event_args': jqm_page_event_args
-        };
-        content['drupalgap_page_title_pageshow'] = {
-          markup: drupalgap_jqm_page_event_script_code(options)
-        };
-      }
-
-      // And finally return the content.
-      return content;
-    }
-    else {
-      // No page call back specified.
-      console.log(
-        'menu_execute_active_handler - no page callback (' + router_path + ')'
-      );
-      console.log(JSON.stringify(drupalgap.menu_links[router_path]));
-    }
-  }
-  catch (error) {
-    console.log('menu_execute_active_handler(' + path + ') - ' + error);
-  }
-}
-
-/**
- * Gets a router item.
- * @return {Object}
- */
-function menu_get_item() {
-  try {
-    var path = null;
-    var router_item = null;
-    if (arguments[0]) { path = arguments[0]; }
-    if (arguments[1]) { router_item = arguments[1]; }
-    if (path && drupalgap.menu_links[path]) {
-      return drupalgap.menu_links[path];
-    }
-    else { return null; }
-  }
-  catch (error) { console.log('menu_get_item - ' + error); }
-}
-
-/**
- * Returns default menu item options.
- * @return {Object}
- */
-function menu_item_default_options() {
-    return { attributes: menu_item_default_attributes() };
-}
-
-/**
- * Returns default menu item attributes.
- * @return {Object}
- */
-function menu_item_default_attributes() {
-    return { 'class': '' };
-}
-
-/**
- * Returns an array containing the names of system-defined (default) menus.
- * @return {Object}
- */
-function menu_list_system_menus() {
-  try {
-    var system_menus = {
-      'user_menu_anonymous': {
-        'title': t('User menu authenticated')
-      },
-      'user_menu_authenticated': {
-        'title': t('User menu authenticated')
-      },
-      'main_menu': {
-        'title': t('Main menu')
-      },
-      'primary_local_tasks': {
-        'title': t('Primary Local Tasks')
-      }
-    };
-    // Add the menu_name to each menu as a property.
-    for (var menu_name in system_menus) {
-        if (!system_menus.hasOwnProperty(menu_name)) { continue; }
-        var menu = system_menus[menu_name];
-        menu.menu_name = menu_name;
-    }
-    return system_menus;
-  }
-  catch (error) { console.log('menu_list_system_menus - ' + error); }
-}
-
-/**
- * Collects and alters the menu definitions.
- */
-function menu_router_build() {
-  //  Calls all hook_menu implementations and builds a collection of menu links.
-  try {
-    // For each module that implements hook_menu, iterate over each of the
-    // menu links defined by the hook, then add each menu item to
-    // drupalgap.menu_links keyed by the path.
-    var modules = module_implements('menu');
-    var function_name;
-    var fn;
-    var menu_links;
-    for (var index in modules) {
-        if (!modules.hasOwnProperty(index)) { continue; }
-        var module = modules[index];
-        // Determine the hook function name, grab the function, and call it
-        // to retrieve the hook's menu links.
-        function_name = module + '_menu';
-        fn = window[function_name];
-        menu_links = fn();
-        // Iterate over each item.
-        for (var path in menu_links) {
-            if (!menu_links.hasOwnProperty(path)) { continue; }
-            var menu_item = menu_links[path];
-            // Attach module name to item.
-            menu_item.module = module;
-            // Set a default type for the item if one isn't provided.
-            if (typeof menu_item.type === 'undefined') {
-              menu_item.type = 'MENU_NORMAL_ITEM';
-            }
-            // Set default options and attributes if none have been provided.
-            // @TODO - Now that we are doing this here, there may be a few
-            // places throughout the code that were checking for these
-            // undefined objects that will no longer need to be checked.
-            if (typeof menu_item.options === 'undefined') {
-              menu_item.options = menu_item_default_options();
-            }
-            else if (typeof menu_item.options.attributes === 'undefined') {
-              menu_item.options.attributes = menu_item_default_attributes();
-            }
-            // Make the path available as a property in the menu link.
-            menu_item.path = path;
-            // Determine any parent, sibling, and child paths for the item.
-            drupalgap_menu_router_build_menu_item_relationships(
-              path,
-              menu_item
-            );
-            // Attach item to menu links.
-            drupalgap.menu_links[path] = menu_item;
-        }
-    }
-  }
-  catch (error) { console.log('menu_router_build - ' + error); }
-}
-
-/**
- * Given a menu link path, this determines and returns the router path as a
- * string.
- * @param {String} path
- * @return {String}
- */
-function drupalgap_get_menu_link_router_path(path) {
-  try {
-
-    // @TODO - Why is this function called twice sometimes? E.G. via an MVC item
-    // view item/local_users/user/0, this function gets called twice in one page
-    // load, that can't be good.
-
-    // @TODO - this function has a limitation in the types of menu paths it can
-    // handle, for example a menu path of 'collection/%/%/list' with a path of
-    // 'collection/local_users/user/list' can't find eachother. So we had to
-    // change the mvc_menu() item path to be collection/list/%/%.
-
-    // @TODO - each time this function is called, we should create a static
-    // record of the result router path, keyed by the incoming path, that way
-    // this heavy function can be called more often with less resource.
-
-    // Is this path defined in drupalgap.menu_links? If it is, use it's router
-    // path if it is defined, otherwise just set its router path to its own
-    // path.
-    if (drupalgap.menu_links[path]) {
-      if (typeof drupalgap.menu_links[path].router_path === 'undefined') {
-        return path;
-      }
-      else {
-        return drupalgap.menu_links[path].router_path;
-      }
-    }
-
-    // Let's figure out where to route this menu item, and attach the
-    // router to the item.
-    var router_path = null;
-    var args = arg(null, path);
-
-    // If there is an integer in the path, replace it with the wildcard
-    // defined via hook_menu implementation.
-    if (args) {
-      var args_size = args.length;
-      switch (args[0]) {
-        case 'comment':
-        case 'user':
-        case 'node':
-          if (args_size > 1 && is_int(parseInt(args[1]))) {
-            args[1] = '%';
-            router_path = args.join('/');
-          }
-          break;
-        case 'taxonomy':
-          if (args_size > 2 && (args[1] == 'vocabulary' || args[1] == 'term') &&
-              is_int(parseInt(args[2]))
-          ) {
-            args[2] = '%';
-            router_path = args.join('/');
-          }
-          break;
-        default:
-          if (args_size > 1 && is_int(parseInt(args[1]))) {
-            args[1] = '%';
-            router_path = args.join('/');
-          }
-          break;
-      }
-    }
-
-    // If we haven't found a router path yet, try some other techniques to find
-    // it. If all else fails, just set the router path to the path itself.
-    if (!router_path) {
-      // Are there any paths in drupalgap.menu_links that would be good
-      // candidates as the router for this path? Let's start at the back of the
-      // argument list and start replacing each with a wildcard (%) and then
-      // see if there is a path in drupalgap.menu_links that can handle it.
-      if (args && args.length > 1) {
-        var temp_router_path;
-        for (var i = args.length - 1; i != -1; i--) {
-          temp_router_path = '';
-          for (var j = 0; j < args.length; j++) {
-            if (j < i) {
-              temp_router_path += args[j];
-            }
-            else {
-              temp_router_path += '%';
-            }
-            if (j != args.length - 1) {
-              temp_router_path += '/';
-            }
-          }
-          // If we found a router path, let's use it.
-          if (drupalgap.menu_links[temp_router_path]) {
-            router_path = temp_router_path;
-            break;
-          }
-        }
-      }
-    }
-
-    // If the router path is a default menu local task, inherit its parent
-    // router path.
-    if (drupalgap.menu_links[router_path] &&
-        drupalgap.menu_links[router_path].type == 'MENU_DEFAULT_LOCAL_TASK' &&
-        drupalgap.menu_links[router_path].parent) {
-      router_path = drupalgap.menu_links[router_path].parent;
-    }
-
-    // If there isn't a router and we couldn't find one, we'll just route
-    // to the path itself.
-    if (!router_path) { router_path = path; }
-
-    // Finally, return the router path.
-    return router_path;
-  }
-  catch (error) {
-    console.log('drupalgap_get_menu_link_router_path - ' + error);
-  }
-}
-
-
-/**
- * Loads all of the menus specified in drupalgap.settings.menus into
- * drupalgap.menus. This is called after menu_router_build(), so any system
- * defined menus will already be present and should be overwritten with any
- * customizations present in the settings. It then iterates over the menu links
- * specified in drupalgap.menu_links and attaches any of them that have a
- * menu_name to their corresponding menu in drupalgap.menus. Any menu link items
- * that have a 'region' property specified will be added to
- * drupalgap.theme.regions[region].
- */
-function drupalgap_menus_load() {
-  try {
-    if (drupalgap.settings.menus) {
-      // Process each menu defined in the settings.
-      for (var menu_name in drupalgap.settings.menus) {
-          if (!drupalgap.settings.menus.hasOwnProperty(menu_name)) { continue; }
-          var menu = drupalgap.settings.menus[menu_name];
-          // If the menu does not already exist, it is a custom menu, so create
-          // the menu and its corresponding block.
-          if (!drupalgap.menus[menu_name]) {
-            // If the custom menu doesn't have its machine name set, set it.
-            if (!menu.menu_name) { menu.menu_name = menu_name; }
-            // Save the custom menu, as long is its name isn't 'regions',
-            // because that is a special "system" menu that allows menu links to
-            // be placed directly in regions via settings.js. Keep in mind the
-            // 'regions' menu is in fact NOT a system menu.
-            if (menu_name != 'regions') {
-              menu_save(menu);
-              // Make a block for this custom menu.
-              var block_delta = menu.menu_name;
-              drupalgap.blocks[0][block_delta] = {
-                name: block_delta,
-                delta: block_delta,
-                module: 'menu'
-              };
-            }
-          }
-          else {
-            // The menu is a system defined menu, merge it together with any
-            // custom settings.
-            $.extend(true, drupalgap.menus[menu_name], menu);
-          }
-      }
-      // Now that we have all of the menus loaded up, and the menu router is
-      // built, let's iterate over all the menu links and perform various
-      // operations on them.
-      for (var path in drupalgap.menu_links) {
-          if (!drupalgap.menu_links.hasOwnProperty(path)) { continue; }
-          var menu_link = drupalgap.menu_links[path];
-          // Let's grab any links from the router that have a menu specified,
-          // and add the link to the router.
-          if (menu_link.menu_name) {
-            if (drupalgap.menus[menu_link.menu_name]) {
-              // Create a links array for the menu if one doesn't exist already.
-              if (!drupalgap.menus[menu_link.menu_name].links) {
-                drupalgap.menus[menu_link.menu_name].links = [];
-              }
-              // Add the path to the menu link inside the menu.
-              menu_link.path = path;
-              // Now push the link onto the menu. We only care about the title,
-              // path and options, as this is just a link. The rest of the
-              // menu link data can be retrieved from drupalgap.menu_links.
-              var link =
-                drupalgap_menus_load_convert_menu_link_to_link_json(menu_link);
-              drupalgap.menus[menu_link.menu_name].links.push(link);
-            }
-            else {
-              console.log(
-                'drupalgap_menus_load - menu does not exist (' +
-                menu_link.menu_name + '), cannot attach link to it (' +
-                path + ')'
-              );
-            }
-          }
-          // If the menu link is set to a specific region, create a links array
-          // for the region if one doesn't exist already, then add the menu item
-          // to the links array as a link.
-          if (menu_link.region) {
-            if (!drupalgap.theme.regions[menu_link.region.name].links) {
-              drupalgap.theme.regions[menu_link.region.name].links = [];
-            }
-            drupalgap.theme.regions[menu_link.region.name].links.push(
-              menu_link
-            );
-          }
-      }
-      // If there are any region menu links defined in settings.js, create a
-      // links array for the region if one doesn't exist already, then add the
-      // menu item to the links array as a link.
-      if (typeof drupalgap.settings.menus.regions !== 'undefined') {
-        for (var region in drupalgap.settings.menus.regions) {
-            if (!drupalgap.settings.menus.regions.hasOwnProperty(region)) { continue; }
-            var menu = drupalgap.settings.menus.regions[region];
-            if (
-              typeof menu.links !== 'undefined' &&
-              $.isArray(menu.links) &&
-              menu.links.length > 0
-            ) {
-              if (!drupalgap.theme.regions[region].links) {
-                drupalgap.theme.regions[region].links = [];
-              }
-              for (var index in menu.links) {
-                  if (!menu.links.hasOwnProperty(index)) { continue; }
-                  var link = menu.links[index];
-                  drupalgap.theme.regions[region].links.push(link);
-              }
-            }
-        }
-      }
-    }
-  }
-  catch (error) { console.log('drupalgap_menus_load - ' + error); }
-}
-
-/**
- * Given a menu link item from drupalgap_menus_load(), this will return a JSON
- * object representing a link object compatable with theme_link(). It contains
- * the link title, path and options.
- * @param {Object} menu_link
- * @return {Object}
- */
-function drupalgap_menus_load_convert_menu_link_to_link_json(menu_link) {
-  try {
-    var link = {};
-    if (menu_link.title) {
-      // TODO - this is strange, we have to fill the 'text' value so theme_link
-      // will play nice. These two properties, and their usage, need a thorough
-      // review, only one should probably be used.
-      // UPDATE - the link.text property is probably no longer used, it should
-      // be safe to get rid of. In fact, this whole function is dumb and should
-      // go away.
-      link.title = menu_link.title;
-      link.text = menu_link.title;
-    }
-    if (menu_link.path) { link.path = menu_link.path; }
-    if (menu_link.options) { link.options = menu_link.options; }
-    // If it is a menu link on a region, and it has options, set the link
-    // options to the ones provided in the menu link region settings.
-    if (menu_link.region && menu_link.region.options) {
-      link.options = menu_link.options = menu_link.region.options;
-    }
-    return link;
-  }
-  catch (error) {
-    console.log(
-      'drupalgap_menus_load_convert_menu_link_to_link_json - ' + error
-    );
-  }
-}
-
-
-/**
- * Given a path, and its corresponding menu item, this will determine any
- * parent, sibling, and/or child menu item paths and set the references on each
- * so they are all aware of eachother's paths.
- * @param {String} path
- * @param {Object} menu_item
- */
-function drupalgap_menu_router_build_menu_item_relationships(path, menu_item) {
-  try {
-    // Split up the path arguments.
-    var args = arg(null, path);
-    // Any parent?
-    if (args.length > 1) {
-      // Set the parent path.
-      var parent = args.splice(0, args.length - 1).join('/');
-      menu_item.parent = parent;
-      // Make sure the parent exists.
-      if (drupalgap.menu_links[parent]) {
-        // Now tell the parent about this child. If the parent doesn't yet have
-        // any children, setup the children array on the parent.
-        if (typeof drupalgap.menu_links[parent].children === 'undefined') {
-          drupalgap.menu_links[parent].children = [];
-        }
-        drupalgap.menu_links[parent].children.push(path);
-        // Now tell any siblings about this item, and tell this item about any
-        // siblings.
-        if (typeof menu_item.siblings === 'undefined') {
-          menu_item.siblings = [];
-        }
-        for (var index in drupalgap.menu_links[parent].children) {
-            if (!drupalgap.menu_links[parent].children.hasOwnProperty(index)) { continue; }
-            var sibling = drupalgap.menu_links[parent].children[index];
-            if (sibling != path && drupalgap.menu_links[sibling]) {
-              if (
-                typeof drupalgap.menu_links[sibling].siblings === 'undefined'
-              ) {
-                drupalgap.menu_links[sibling].siblings = [];
-              }
-              drupalgap.menu_links[sibling].siblings.push(path);
-              menu_item.siblings.push(sibling);
-            }
-        }
-      }
-    }
-  }
-  catch (error) {
-    console.log('drupalgap_menu_router_build_relationships - ' + error);
-  }
-}
-
-
-/**
- * Show the jQueryMobile loading message.
- * @see http://stackoverflow.com/a/16277865/763010
- */
-function drupalgap_loading_message_show() {
-  try {
-    // Backwards compatibility for versions prior to 7.x-1.6-alpha
-    if (drupalgap.loading === 'undefined') { drupalgap.loading = false; }
-    // Return if the loading message is already shown.
-    if (drupalgap.loading || drupalgap_toast_is_shown()) { return; }
-    var options = drupalgap_loader_options();
-    if (arguments[0]) { options = arguments[0]; }
-    // Show the loading message.
-    //$.mobile.loading('show', options);
-    //drupalgap.loading = true;
-    setTimeout(function() {
-      $.mobile.loading('show', options);
-      drupalgap.loading = true;
-    }, 1);
-  }
-  catch (error) { console.log('drupalgap_loading_message_show - ' + error); }
-}
-
-/**
- * Hide the jQueryMobile loading message.
- */
-function drupalgap_loading_message_hide() {
-  try {
-    if (drupalgap_toast_is_shown()) { return; }
-    setTimeout(function() {
-      $.mobile.loading('hide');
-      drupalgap.loading = false;
-      drupalgap.loader = 'loading';
-    }, 100);
-  }
-  catch (error) { console.log('drupalgap_loading_message_hide - ' + error); }
-}
-
-/**
- * Returns the jQM loader options based on the current mode and settings.js.
- * @return {Object}
- */
-function drupalgap_loader_options() {
-  try {
-    var mode = drupalgap.loader;
-    var text = t('Loading') + '...';
-    var textVisible = true;
-    if (mode == 'saving') { var text = t('Saving') + '...'; }
-    var options = {
-      text: text,
-      textVisible: textVisible
-    };
-    if (drupalgap.settings.loader && drupalgap.settings.loader[mode]) {
-      options = $.extend(true, options, drupalgap.settings.loader[mode]);
-      if (options.text) { options.text = t(options.text); }
-    }
-    return options;
-  }
-  catch (error) { console.log('drupalgap_loader_options - ' + error); }
-}
-
-/**
- * Sets a message to display to the user. Optionally pass in a second argument
- * to specify the message type: status, warning, error
- * @param {String} message
- */
-function drupalgap_set_message(message) {
-  try {
-    if (empty(message)) { return; }
-    var type = 'status';
-    if (arguments[1]) { type = arguments[1]; }
-    var msg = {
-      message: message,
-      type: type
-    };
-    drupalgap.messages.push(msg);
-  }
-  catch (error) { console.log('drupalgap_set_message - ' + error); }
-}
-
-/**
- * Sets the current messages.
- * @param {Array} messages
- */
-function drupalgap_set_messages(messages) {
-  try {
-    drupalgap.messages = messages;
-  }
-  catch (error) { console.log('drupalgap_set_messages - ' + error); }
-}
-
-/**
- * Returns the current messages.
- * @return {Array}
- */
-function drupalgap_get_messages() {
-  try {
-    return drupalgap.messages;
-  }
-  catch (error) { console.log('drupalgap_get_messages - ' + error); }
-}
-
-/**
- * Clears the messages from the current page. Optionally pass in a page id to
- * clear messages from a particular page.
- */
-function drupalgap_clear_messages() {
-  try {
-    var page_id = arguments[0];
-    if (empty(page_id)) { page_id = drupalgap_get_page_id(); }
-    $('#' + page_id + ' div.messages').remove();
-  }
-  catch (error) { console.log('drupalgap_clear_messages - ' + error); }
-}
-
-/**
- * Alerts a message to the user using PhoneGap's alert. It is important to
- * understand this is an async function, so code will continue to execute while
- * the alert is displayed to the user.
- * You may optionally pass in a second argument as a JSON object with the
- * following properties:
- *   alertCallback - the function to call after the user presses OK
- *   title - the title to use on the alert box, defaults to 'Alert'
- *   buttonName - the text to place on the button, default to 'OK'
- * @param {String} message
- */
-function drupalgap_alert(message) {
-  try {
-    var options = null;
-    if (arguments[1]) { options = arguments[1]; }
-    var alertCallback = function() { };
-    var title = t('Alert');
-    var buttonName = t('OK');
-    if (options) {
-      if (options.alertCallback) { alertCallback = options.alertCallback; }
-      if (options.title) { title = options.title; }
-      if (options.buttonName) { buttonName = options.buttonName; }
-    }
-    if (
-      drupalgap.settings.mode != 'phonegap' ||
-      typeof navigator.notification === 'undefined'
-    ) {
-      alert(message);
-      alertCallback();
-    }
-    else {
-      navigator.notification.alert(message, alertCallback, title, buttonName);
-    }
-  }
-  catch (error) { console.log('drupalgap_alert - ' + error); }
-}
-
-/**
- * Displays a confirmation message to the user using PhoneGap's confirm. It is
- * important to understand this is an async function, so code will continue to
- * execute while the confirmation is displayed to the user.
- * You may optionally pass in a second argument as a JSON object with the
- * following properties:
- *   confirmCallback - the function to call after the user presses a button, the
- *               button's label is passed to this function.
- *   title - the title to use on the alert box, defaults to 'Confirm'
- *   buttonLabels - the text to place on the OK, and Cancel buttons, separated
- *                  by comma.
- * @param {String} message
- * @return {Boolean}
- */
-function drupalgap_confirm(message) {
-  try {
-    var options = null;
-    if (arguments[1]) { options = arguments[1]; }
-    var confirmCallback = function(button) { };
-    var title = t('Confirm');
-    var buttonLabels = [t('OK'), t('Cancel')];
-    if (options) {
-      if (options.confirmCallback) {
-        confirmCallback = options.confirmCallback;
-      }
-      if (options.title) { title = options.title; }
-      if (options.buttonLabels) { buttonLabels = options.buttonLabels; }
-    }
-    // The phonegap confirm dialog doesn't seem to work in Ripple, so just use
-    // the default one, and it definitely doesn't work in a web app, so
-    // otherwise just use the default confirm.
-    if (
-      typeof parent.window.ripple === 'function' ||
-      drupalgap.settings.mode == 'web-app'
-    ) {
-      var r = confirm(message);
-      if (r == true) { confirmCallback(1); } // OK button.
-      else { confirmCallback(2); } // Cancel button.
-    }
-    else {
-      navigator.notification.confirm(
-        message,
-        confirmCallback,
-        title,
-        buttonLabels
-      );
-    }
-    return false;
-  }
-  catch (error) { console.log('drupalgap_confirm - ' + error); }
-}
-
-/**
- * Show a non intrusive alert message. You may optionally pass in an
- * integer value as the second argument to specify how many milliseconds
- * to wait before closing the message. Likewise, you can pass in a
- * third argument to specify how long to wait before opening the
- * message.
- * @param {string} html - The html to display.
- */
-function drupalgap_toast(html) {
-  try {
-    var open = arguments[2] ? arguments[2] : 750;
-    var close = arguments[1] ? arguments[1] : 1500;
-    setTimeout(function() {
-      drupalgap.toast.shown = true;
-      $.mobile.loading('show', {
-        textVisible: true,
-        html: html
-      });
-      var interval = setInterval(function () {
-        $.mobile.loading('hide');
-        drupalgap.toast.shown = false;
-        clearInterval(interval);
-      }, close);
-    }, open);
-  }
-  catch (error) {
-    console.log('drupalgap_toast - ' + error);
-  }
-}
-
-/**
- * Returns true if the toast is currently shown, false otherwise.
- * @returns {Boolean}
- */
-function drupalgap_toast_is_shown() {
-  return drupalgap.toast.shown;
-}
-
-/**
- * This will return the query string arguments for the page. You may optionally
- * pass in a key to get its value, pass in a key then a value to set the key
- * equal to the value, and you may optionally pass in a third argument to use
- * a specific page id, otherwise DrupalGap will automatically use the
- * appropriate page id.
- * @return {String|NULL}
- */
-function _GET() {
-  try {
-
-    // Set up defaults.
-    var get = false;
-    var set = false;
-    var key = null;
-    var value = null;
-
-    // Are we setting? If so, grab the value and key to set.
-    if (typeof arguments[1] !== 'undefined') {
-      set = true;
-      value = arguments[1];
-      if (typeof arguments[0] !== 'undefined') { key = arguments[0]; }
-      else {
-        console.log('WARNING: _GET - missing key for value (' + value + ')');
-        return null;
-      }
-    }
-
-    // Are we getting a certain value? If so, grab the key to get.
-    else if (typeof arguments[0] !== 'undefined') {
-      get = true;
-      key = arguments[0];
-    }
-
-    // Otherwise we are getting the whole page.
-    else { get = true; }
-
-    // Now perform the get or set...
-
-    // Get.
-    if (get) {
-
-      // If a page id was provided use it, otherwise use the current page's id.
-      var id = null;
-      if (typeof arguments[2] !== 'undefined') { id = arguments[2]; }
-      else { id = drupalgap_get_page_id(); }
-
-      // Now that we know the page id, lets return the value if a key was
-      // provided, otherwise return the whole query string object for the page.
-      if (typeof _dg_GET[id] !== 'undefined') {
-        if (!key) { return _dg_GET[id]; }
-        else if (typeof _dg_GET[id][key] !== 'undefined') {
-          return _dg_GET[id][key];
-        }
-        return null;
-      }
-
-    }
-
-    // Set.
-    else if (set) {
-
-      // If we were given a path, use its page id as the property index, other
-      // wise we'll use the current page (which is different than the
-      // destination page!).
-      var id = null;
-      if (typeof arguments[2] !== 'undefined') {
-        id = drupalgap_get_page_id(arguments[2]);
-      }
-      else { id = drupalgap_get_page_id(); }
-
-      // If the id hasn't been instantiated, do so. Then set the key and value
-      // onto it.
-      if (typeof _dg_GET[id] === 'undefined') { _dg_GET[id] = {}; }
-      if (value) { _dg_GET[id][key] = value; }
-
-    }
-    return null;
-  }
-  catch (error) { console.log('_GET - ' + error); }
-}
-
-/**
- * Each time we use drupalgap_goto to change a page, this function is called on
- * the pagebeforehange event. If we're not moving backwards, or navigating to
- * the same page, this will preproccesses the page, then processes it.
- */
-$(document).on('pagebeforechange', function(e, data) {
-    try {
-      // If we're moving backwards, reset drupalgap.back and return.
-      if (drupalgap && drupalgap.back) {
-        drupalgap.back = false;
-        return;
-      }
-      // If the jqm active page url is the same as the page id of the current
-      // path, return.
-      if (
-        drupalgap_jqm_active_page_url() ==
-        drupalgap_get_page_id(drupalgap_path_get())
-      ) { return; }
-      // We only want to process the page we are going to, not the page we are
-      // coming from. When data.toPage is a string that is our destination page.
-      if (typeof data.toPage === 'string') {
-
-        // If drupalgap_goto() determined that it is necessary to prevent the
-        // default page from reloading, then we'll skip the page
-        // processing and reset the prevention boolean.
-        if (drupalgap && !drupalgap.page.process) {
-          drupalgap.page.process = true;
-        }
-        else if (drupalgap) {
-          // Pre process, then process the page.
-          template_preprocess_page(drupalgap.page.variables);
-          template_process_page(drupalgap.page.variables);
-        }
-
-      }
-    }
-    catch (error) { console.log('pagebeforechange - ' + error); }
-});
-
-/**
- * Implementation of template_preprocess_page().
- * @param {Object} variables
- */
-function template_preprocess_page(variables) {
-  try {
-    // Set up default attributes for the page's div container.
-    if (typeof variables.attributes === 'undefined') {
-      variables.attributes = {};
-    }
-
-    // @todo - is this needed?
-    // @UPDATE - this should be used, but these page attributes are ignored
-    // by drupalgap_add_page_to_dom()!
-    variables.attributes['data-role'] = 'page';
-
-    module_invoke_all('preprocess_page', variables);
-
-    // Place the variables into drupalgap.page
-    drupalgap.page.variables = variables;
-  }
-  catch (error) { console.log('template_preprocess_page - ' + error); }
-}
-
-/**
- * Implementation of template_process_page().
- * @param {Object} variables
- */
-function template_process_page(variables) {
-  try {
-    var drupalgap_path = drupalgap_path_get();
-    // Execute the active menu handler to assemble the page output. We need to
-    // do this before we render the regions below.
-    drupalgap.output = menu_execute_active_handler();
-    // For each region, render it, then replace the placeholder in the page's
-    // html with the rendered region.
-    var page_id = drupalgap_get_page_id(drupalgap_path);
-    var page = $('#' + page_id);
-    var page_html = $(page).html();
-    if (!page_html) { return; }
-    for (var index in drupalgap.theme.regions) {
-        if (!drupalgap.theme.regions.hasOwnProperty(index)) { continue; }
-        var region = drupalgap.theme.regions[index];
-        var _region = {};
-        $.extend(true, _region, region);
-        page_html = page_html.replace(
-          '{:' + region.name + ':}',
-          drupalgap_render_region(_region)
-        );
-    }
-    $(page).html(page_html);
-    module_invoke_all('post_process_page', variables);
-  }
-  catch (error) { console.log('template_process_page - ' + error); }
-}
-
-/**
- * Given a path, this will return the id for the page's div element.
- * For example, a string path of 'foo/bar' would result in an id of 'foo_bar'.
- * If no path is provided, it will return the current page's id.
- * @param {String} path
- * @return {String}
- */
-function drupalgap_get_page_id(path) {
-  try {
-    if (!path) { path = drupalgap_path_get(); }
-    var id = path.toLowerCase().replace(/\//g, '_').replace(/-/g, '_');
-    return id;
-  }
-  catch (error) { console.log('drupalgap_get_page_id - ' + error); }
-}
-
-/**
- * Given a page id, the theme's page.tpl.html string, and the menu link object
- * (all bundled in options) this takes the page template html and adds it to the
- * DOM. It doesn't actually render the page, that is taken care of by the
- * pagebeforechange handler.
- * @param {Object} options
- */
-function drupalgap_add_page_to_dom(options) {
-  try {
-    // Prepare the default page attributes, then merge in any customizations
-    // from the hook_menu() item, then inject the attributes into the
-    // placeholder. We have to manually add our default class name after the
-    // extend until this issue is resolved:
-    // https://github.com/signalpoint/DrupalGap/issues/321
-    var attributes = {
-      id: options.page_id,
-      'data-role': 'page'
-    };
-    attributes =
-      $.extend(true, attributes, options.menu_link.options.attributes);
-    attributes['class'] +=
-      ' ' + drupalgap_page_class_get(drupalgap.router_path);
-    options.html = options.html.replace(
-      /{:drupalgap_page_attributes:}/g,
-      drupalgap_attributes(attributes)
-    );
-    // Add the html to the page and the page id to drupalgap.pages.
-    $('body').append(options.html);
-    drupalgap.pages.push(options.page_id);
-  }
-  catch (error) { console.log('drupalgap_add_page_to_dom - ' + error); }
-}
-
-/**
- * Attempts to remove given page from the DOM, will not remove the current page.
- * You may force the removal by passing in a second argument as a JSON object
- * with a 'force' property set to true. You may pass in a third argument to
- * specify the current page, otherwise it will default to what DrupalGap thinks
- * is the current page. No matter what, the current page (specified or not)
- * can't be removed from the DOM, because jQM always needs one page in the DOM.
- * @param {String} page_id
- */
-function drupalgap_remove_page_from_dom(page_id) {
-  try {
-    var current_page_id = null;
-    if (typeof arguments[2] !== 'undefined') { current_page_id = arguments[2]; }
-    else { current_page_id = drupalgap_get_page_id(drupalgap_path_get()); }
-    var options = {};
-    if (typeof arguments[1] !== 'undefined') { options = arguments[1]; }
-    if (current_page_id != page_id || options.force) {
-      $('#' + page_id).empty().remove();
-      var page_index = drupalgap.pages.indexOf(page_id);
-      if (page_index > -1) { drupalgap.pages.splice(page_index, 1); }
-      // We'll remove the query string, unless we were instructed to leave it.
-      if (
-        typeof _dg_GET[page_id] !== 'undefined' &&
-        (typeof options.leaveQuery === 'undefined' || !options.leaveQuery)
-      ) { delete _dg_GET[page_id]; }
-      // Remove any embedded view for the page.
-      views_embedded_view_delete(page_id);
-    }
-    else {
-      console.log('WARNING: drupalgap_remove_page_from_dom() - not removing ' +
-        'the current page (' + page_id + ') from the DOM!');
-    }
-  }
-  catch (error) { console.log('drupalgap_remove_page_from_dom - ' + error); }
-}
-
-/**
- * Removes all pages from the DOM except the current one.
- */
-function drupalgap_remove_pages_from_dom() {
-  try {
-    var current_page_id = drupalgap_get_page_id(drupalgap_path_get());
-    var pages = drupalgap.pages.slice(0);
-    for (var index in pages) {
-        if (!pages.hasOwnProperty(index)) { continue; }
-        var page_id = pages[index];
-        if (current_page_id != page_id) {
-          drupalgap_remove_page_from_dom(page_id, null, current_page_id);
-        }
-    }
-    // Reset drupalgap.pages to only contain the current page id.
-    drupalgap.pages = [current_page_id];
-    // Reset the drupalgap.views.ids array.
-    drupalgap.views.ids = [];
-    // Reset the jQM page events.
-    drupalgap.page.jqm_events = [];
-    // Reset the back path.
-    drupalgap.back_path = [];
-  }
-  catch (error) { console.log('drupalgap_remove_pages_from_dom - ' + error); }
-}
-
-/**
- * Given a router path, this will return the CSS class name that can be used for
- * the page container.
- * @param {String} router_path The page router path.
- * @return {String} A css class name.
- */
-function drupalgap_page_class_get(router_path) {
-  try {
-    // Replace '/' and '%' with underscores, then trim any trailing underscores.
-    var class_name = router_path.replace(/[\/%]/g, '_');
-    while (class_name.lastIndexOf('_') == class_name.length - 1) {
-      class_name = class_name.substr(0, class_name.length - 1);
-    }
-    return class_name;
-  }
-  catch (error) { console.log('drupalgap_page_class_get - ' + error); }
-}
-
-/**
- * Returns true if the given page id's page div already exists in the DOM.
- * @param {String} page_id
- * @return {Boolean}
- */
-function drupalgap_page_in_dom(page_id) {
-  try {
-    var pages = $("body div[data-role$='page']");
-    var page_in_dom = false;
-    if (pages && pages.length > 0) {
-      for (var index in pages) {
-          if (!pages.hasOwnProperty(index)) { continue; }
-          var page = pages[index];
-          if (($(page).attr('id')) == page_id) {
-            page_in_dom = true;
-            break;
-          }
-      }
-    }
-    return page_in_dom;
-  }
-  catch (error) { console.log('drupalgap_page_in_dom - ' + error); }
-}
-
-/**
- * Returns true if the current page is the front page, false otherwise.
- * @return {Boolean}
- */
-function drupalgap_is_front_page() {
-  try {
-    return drupalgap_path_get() == drupalgap.settings.front;
-  }
-  catch (error) { console.log('drupalgap_is_front_page - ' + error); }
-}
-
-/**
- * Returns the URL of the active jQuery Mobile page.
- * @return {String}
- */
-function drupalgap_jqm_active_page_url() {
-  try {
-    // WARNING: when the app first loads, this value may be much different than
-    // you expect. It certainly is not the front page path, because on Android
-    // for example it returns '/android_asset/www/index.html'. Also, when the
-    // app first loads, activePage is null, so just return an empty string.
-    if (!$.mobile.activePage) { return ''; }
-    return $.mobile.activePage.data('url');
-  }
-  catch (error) { console.log('drupalgap_jqm_active_page_url - ' + error); }
-}
-
-/**
- * Renders the html string of the page content that is stored in
- * drupalgap.output.
- * @return {String}
- */
-function drupalgap_render_page() {
-  try {
-    module_invoke_all('page_build', drupalgap.output);
-    return drupalgap_render(drupalgap.output);
-  }
-  catch (error) { console.log('drupalgap_render_page - ' + error); }
-}
-
-/**
- * Given a region, this renders it and all the blocks in it. The blocks are
- * specified in the settings.js file, they are bundled under a region, which in
- * turn is bundled under a theme name. Returns an empty string if it fails.
- * @param {Object} region
- * @return {String}
- */
-function drupalgap_render_region(region) {
-  try {
-    // @TODO - this function is getting huge. Break it up into many more
-    // manageable functions.
-
-    // Make sure there are blocks specified for this theme in settings.js.
-    if (!drupalgap.settings.blocks[drupalgap.settings.theme]) {
-      var msg = 'WARNING: drupalgap_render_region() - there are no blocks ' +
-        'for the "' + drupalgap.settings.theme + '" theme in the settings.js ' +
-        'file!';
-      console.log(msg);
-      return '';
-    }
-
-    // Grab the current path.
-    var current_path = drupalgap_path_get();
-
-    // Let's render the region...
-    var region_html = '';
-
-    region_html +=
-      _drupalgap_region_render_zone('_prefix', region, current_path);
-
-    // If the region has blocks specified for it in the theme in settings.js...
-    if (drupalgap.settings.blocks[drupalgap.settings.theme][region.name]) {
-
-      // If a class attribute hasn't yet been provided, set a default, then
-      // append a system class name for the region onto its attributes array.
-      if (!region.attributes['class']) { region.attributes['class'] = ''; }
-      region.attributes['class'] += ' region_' + region.name + ' ';
-
-      // Open the region container.
-      region_html += '<div ' + drupalgap_attributes(region.attributes) + '>';
-
-      // If there are any links attached to this region, render them first.
-      var region_link_count = 0;
-      var region_link_popup_count = 0;
-      if (region.links && region.links.length > 0) {
-
-        // Let's first iterate over all of the region links and keep counts of
-        // any links that use the ui-btn-left and ui-btn-right class attribute.
-        // This will allow us to properly wrap region links in a control group.
-        var ui_btn_left_count = 0;
-        var ui_btn_right_count = 0;
-        for (var index in region.links) {
-            if (!region.links.hasOwnProperty(index)) { continue; }
-            var link = region.links[index];
-            var data = menu_region_link_get_data(link);
-            if (!drupalgap_check_visibility('region', data)) { continue; }
-            region_link_count++;
-            var css_class = drupalgap_link_get_class(link);
-            if (css_class) {
-              var side = menu_region_link_get_side(css_class);
-              if (side == 'left') { ui_btn_left_count++; }
-              else if (side == 'right') { ui_btn_right_count++; }
-            }
-        }
-
-        // We need to separately render each side of the header (left, right).
-        // That allows us to properly wrap the links with a control group if
-        // it is needed.
-        var region_link_html = '';
-        var ui_btn_left_html = '';
-        var ui_btn_right_html = '';
-        for (var i = 0; i < region.links.length; i++) {
-
-          // Grab the link and its data.
-          var region_link = region.links[i];
-          var data = menu_region_link_get_data(region_link);
-
-          // Check link's region visiblity settings. Links will not be rendered
-          // on certain system pages.
-          // @TODO - this additional call to drupalgap_check_visibility() here
-          // may be expensive, consider setting aside the results from the call
-          // above, and using them here.
-          if (drupalgap_check_visibility('region', data)) {
-
-            // Don't render the link on certain system pages.
-            if (in_array(current_path, ['offline', 'error', 'user/logout'])) {
-              continue;
-            }
-
-            // If this is a popup region link, set the jQM attributes to make
-            // this link function as a popup (dropdown) menu. Set the default
-            // link icon, if it isn't set.
-            var link_text = region_link.title;
-            var link_path = region_link.path;
-            if (data.options.popup) {
-
-              region_link_popup_count++;
-
-              // If the link text isn't set, and the data icon pos isn't set,
-              // set it the data icon pos so the button and icon are rendered
-              // properly.
-              if (
-                (!link_text || empty(link_text)) &&
-                typeof data.options.attributes['data-iconpos'] === 'undefined'
-              ) { data.options.attributes['data-iconpos'] = 'notext'; }
-
-              // If data-rel, data-icon, data-role aren't set, set them.
-              if (
-                typeof data.options.attributes['data-rel'] === 'undefined'
-              ) { data.options.attributes['data-rel'] = 'popup'; }
-              if (
-                typeof data.options.attributes['data-icon'] === 'undefined'
-              ) { data.options.attributes['data-icon'] = 'bars'; }
-              if (
-                typeof data.options.attributes['data-role'] === 'undefined'
-              ) { data.options.attributes['data-role'] = 'button'; }
-
-              // Popup menus need a dynamic href value on the link, so we
-              // always overwrite it.
-              link_path = null;
-              data.options.attributes['href'] =
-                '#' + menu_container_id(data.options.popup_delta);
-            }
-            else {
-
-              // Set the data-role to a button, if one isn't already set.
-              if (typeof data.options.attributes['data-role'] === 'undefined') {
-                data.options.attributes['data-role'] = 'button';
-              }
-
-            }
-
-            // If it has notext for the icon position, force the text to be
-            // an nbsp.
-            if (data.options.attributes['data-iconpos'] == 'notext') {
-              link_text = '&nbsp;';
-            }
-
-            // Render the link on the proper side.
-            var css_class = drupalgap_link_get_class(region_link);
-            var side = menu_region_link_get_side(css_class);
-            var link_html = l(link_text, link_path, data.options);
-            if (side == 'left') { ui_btn_left_html += link_html; }
-            else if (side == 'right') { ui_btn_right_html += link_html; }
-
-          }
-
-        }
-
-        // If there was more than one link on a side, wrap it in a control
-        // group, and remove the ui-btn class from the links.
-        if (ui_btn_left_count > 1) {
-          var attrs = {
-            'data-type': 'horizontal',
-            'data-role': 'controlgroup',
-            'class': 'ui-btn-left'
-          };
-          ui_btn_left_html = '<div ' + drupalgap_attributes(attrs) + '>' +
-            ui_btn_left_html.replace(/ui-btn-left/g, '') +
-          '</div>';
-        }
-        if (ui_btn_right_count > 1) {
-          var attrs = {
-            'data-type': 'horizontal',
-            'data-role': 'controlgroup',
-            'class': 'ui-btn-right'
-          };
-          ui_btn_right_html = '<div ' + drupalgap_attributes(attrs) + '>' +
-            ui_btn_right_html.replace(/ui-btn-right/g, '') +
-          '</div>';
-        }
-
-        // Finally render the ui sides on the region.
-        region_html += ui_btn_left_html + ui_btn_right_html;
-      }
-
-      // Render each block in the region. Determine how many visible blocks are
-      // in the region.
-      var block_counts = {
-        block_count: 0,
-        block_menu_count: 0
-      };
-      var blocks = drupalgap.settings.blocks[drupalgap.settings.theme][region.name];
-      for (var block_delta in blocks) {
-          if (!blocks.hasOwnProperty(block_delta)) { continue; }
-          var block_settings = blocks[block_delta];
-          // Ignore region _prefix and _suffix.
-          if (block_delta == '_prefix' || block_delta == '_suffix') { continue; }
-          // Render the block.
-          region_html += drupalgap_block_render(
-            region,
-            current_path,
-            block_delta,
-            block_settings,
-            block_counts
-          );
-      }
-
-      // If this was a header or footer, and there were only region links
-      // rendered, place an empty header in the region.
-      if (
-        in_array(region.attributes['data-role'], ['header', 'footer']) &&
-        (
-          block_counts.block_count == 0 && region_link_count > 0 ||
-          block_counts.block_count - block_counts.block_menu_count == 0
-        ) ||
-        (
-          region_link_count > 0 &&
-          region_link_popup_count >= block_counts.block_menu_count &&
-          block_counts.block_count == 0
-        )
-      ) {
-        // Show an empty header if we're not collapsing on an empty region.
-        if (
-          typeof region.collapse_on_empty === 'undefined' ||
-          region.collapse_on_empty === false
-        ) { region_html += '<h2>&nbsp;</h2>'; }
-      }
-
-      // Close the region container.
-      region_html += '</div><!-- ' + region.name + ' -->';
-
-    }
-
-    region_html +=
-      _drupalgap_region_render_zone('_suffix', region, current_path);
-
-    return region_html;
-  }
-  catch (error) { console.log('drupalgap_render_region - ' + error); }
-}
-
-/**
- * Renders the given zone (_prefix, _suffix) if any for a region.
- * @param {String} zone
- * @param {Object} region
- * @param {String} current_path
- * @return {String}
- */
-function _drupalgap_region_render_zone(zone, region, current_path) {
-  try {
-    var html = '';
-    var theme_name = drupalgap.settings.theme;
-    if (typeof drupalgap.settings.blocks[theme_name][region.name] ===
-      'undefined'
-    ) { return html; }
-    var region_settings =
-      drupalgap.settings.blocks[theme_name][region.name];
-    if (typeof region_settings[zone] === 'undefined') { return html; }
-    var blocks = region_settings[zone];
-    for (var block_delta in blocks) {
-        if (!blocks.hasOwnProperty(block_delta)) { continue; }
-        var block_settings = blocks[block_delta];
-        html += drupalgap_block_render(
-          region,
-          current_path,
-          block_delta,
-          block_settings
-        );
-    }
-    return html;
-  }
-  catch (error) { console.log('_drupalgap_region_render_zone - ' + error); }
-}
-
-/**
- * Given a key (typically a block delta), this will generate a unique ID that
- * can be used for the panel. It will be fused with the current page id.
- * @param {String} key
- * @return {String}
- */
-function drupalgap_panel_id(key) {
-  try {
-    return key + '_' + drupalgap_get_page_id();
-  }
-  catch (error) { console.log('drupalgap_panel_id - ' + error); }
-}
-
-
-function drupalgap_render(content) {
-
-  var output_type = $.type(content);
-  var html = '';
-
-  // If the output came back as a string, we can render it as is. If the
-  // output came back as on object, render each element in it through the
-  // theme system.
-  if (output_type === 'string') {
-    // The page came back as an html string.
-    html = content;
-  }
-  else if (output_type === 'object') {
-    // The page came back as a render object. Let's define the names of
-    // variables that are reserved for theme processing.
-    var render_variables = ['theme', 'view_mode', 'language'];
-
-    if (content.markup) { return content.markup; }
-
-    // Is there a theme value specified in the content and the registry?
-    if (content.theme && drupalgap.theme_registry[content.theme]) {
-
-      // Extract the theme object template and determine the template file
-      // name and path.
-      var template = drupalgap.theme_registry[content.theme];
-      var template_file_name = content.theme.replace(/_/g, '-') + '.tpl.html';
-      var template_file_path = template.path + '/' + template_file_name;
-
-      // Make sure the template file exists.
-      // @TODO disc read here, replace with render array!
-      if (drupalgap_file_exists(template_file_path)) {
-
-        // Loads the template file's content into a string.
-        // @TODO there is a disc read here, it is slow for UX! Deprecate via a render array.
-        var template_file_html = drupalgap_file_get_contents(template_file_path);
-        if (template_file_html) {
-
-          // What variable placeholders are present in the template file?
-          var placeholders = drupalgap_get_placeholders_from_html(template_file_html);
-          if (placeholders) {
-
-            // Replace each placeholder with html.
-            for (var index in placeholders) {
-              if (!placeholders.hasOwnProperty(index)) { continue; }
-              var placeholder = placeholders[index];
-              var _html = '';
-              if (content[placeholder]) {
-                // Grab the element variable from the content.
-                var element = content[placeholder];
-                // If it is markup, render it as is, if it is themeable,
-                // then theme it.
-                if (content[placeholder].markup) {
-                  _html = content[placeholder].markup;
-                }
-                else if (content[placeholder].theme) {
-                  _html = theme(content[placeholder].theme, element);
-                }
-                // Now remove the variable from the content.
-                delete content[placeholder];
-              }
-              // Now replace the placeholder with the html, even if it was
-              // empty.
-              template_file_html = template_file_html.replace('{:' + placeholder + ':}', _html);
-            }
-          }
-          else {
-            // There were no place holders found, do nothing, ok.
-          }
-
-          // Finally add the rendered template file to the html.
-          html += template_file_html;
-        }
-        else {
-          console.log('drupalgap_render - failed to get file contents (' + template_file_path + ')');
-        }
-      }
-      else {
-        console.log('drupalgap_render - template file does not exist (' + template_file_path + ')');
-      }
-    }
-
-    // Iterate over any remaining variables and theme them.
-    for (var element in content) {
-      if (!content.hasOwnProperty(element)) { continue; }
-      var variables = content[element];
-      if ($.inArray(element, render_variables) == -1) {
-        html += theme(typeof variables.theme === 'undefined' ? null : variables.theme, variables);
-      }
-    }
-  }
-
-  // Now that we are done assembling the content into an html string, we can
-  // return it.
-  return html;
-}
-
-/**
- * Returns the path to the current DrupalGap theme, false otherwise.
- * @return {String|Boolean}
- */
-function path_to_theme() {
-  try {
-    if (drupalgap.theme_path) {
-      return drupalgap.theme_path;
-    }
-    else {
-      console.log('path_to_theme - drupalgap.theme_path is not set!');
-      return false;
-    }
-  }
-  catch (error) { console.log('path_to_theme - ' + error); }
-}
-
 /**
- * Implementation of theme().
- * @param {String} hook
- * @param {Object} variables
- * @return {String}
+ * Implements hook_add_page_to_dom_alter().
  */
-function theme(hook, variables) {
-  try {
+function hook_add_page_to_dom_alter(attributes, options) {
 
-    // If there is HTML markup present, just return it as is. Otherwise, run
-    // the theme hook and send along the variables.
-    if (!variables) { variables = {}; }
-    if (typeof variables.access !== 'undefined' && !variables.access) { return ''; }
-    if (variables.markup) { return variables.markup; }
-    var content = '';
-    if (!hook) { return content; }
+  // Use this hook to make alterations to a page's attributes or options before it is added to the DOM.
 
-    // First see if the current theme implements the hook, if it does use it, if
-    // it doesn't fallback to the core theme implementation of the hook.
-    var theme_function = drupalgap.settings.theme + '_' + hook;
-    if (!function_exists(theme_function)) {
-      theme_function = 'theme_' + hook;
+  // @param {Object} attributes
+  // The page attributes on a page before it is added to the DOM.
 
-      // Fail safely an informative message if a bogus hook was passed in.
-      if (!function_exists(theme_function)) {
-        var caller = null;
-        if (arguments.callee.caller) { caller = arguments.callee.caller.name; }
-        var msg = 'WARNING: ' + theme_function + '() does not exist.';
-        if (caller) { msg += ' Called by: ' + caller + '().' }
-        console.log(msg);
-        return content;
-      }
+  // @param {Object} options
+  // The page options object containing the rendered html, the menu link object, and the internal page id.
 
-    }
+  // Add a custom class to the page indicating the device size. Place
+  // empty spaces around the class name so we don't collide with others.
+  var size = null;
+  var width = $(window).width();
+  if (width <= 414) { size = 'small'; }
+  else if (width < 1024) { size = 'medium'; }
+  else { size = 'large'; }
+  attributes.class += ' ' + size + ' ';
 
-    // If no attributes are coming in, look to variables.options.attributes
-    // as a secondary option, otherwise setup an empty JSON object for them.
-    if (
-      typeof variables.attributes === 'undefined' ||
-      !variables.attributes
-    ) {
-      if (variables.options && variables.options.attributes) {
-        variables.attributes = variables.options.attributes;
-      }
-      else {
-        variables.attributes = {};
-      }
-    }
-    // If there is no class name, set an empty one.
-    if (!variables.attributes['class']) {
-      variables.attributes['class'] = '';
-    }
-    var fn = window[theme_function];
-    content = fn.call(null, variables);
-    return content;
+  // Add a custom class to a particular route.
+  if (drupalgap_router_path_get() == 'channel/%') {
+    attributes.class += ' foo-bar ';
   }
-  catch (error) { console.log('theme - ' + error); }
-}
-
-/**
- * Themes a button.
- * @param {Object} variables
- * @return {String}
- */
-function theme_button(variables) {
-  try {
-    variables.attributes['data-role'] = 'button';
-    var html = '<a ' + drupalgap_attributes(variables.attributes) + '>' +
-      variables.text +
-    '</a>';
-    return html;
-  }
-  catch (error) { console.log('theme_button_link - ' + error); }
-}
-
-/**
- * Themes a button link.
- * @param {Object} variables
- * @return {String}
- */
-function theme_button_link(variables) {
-  try {
-    variables.attributes['data-role'] = 'button';
-    return theme_link(variables);
-  }
-  catch (error) { console.log('theme_button_link - ' + error); }
-}
-
-/**
- * Themes a collapsible widget.
- * @param {Object} variables
- * @return {String}
- */
-function theme_collapsible(variables) {
-  try {
-    variables.attributes['data-role'] = 'collapsible';
-    var header_type = 'h2';
-    if (variables.header_type) { header_type = variables.header_type; }
-    var header_attributes = {};
-    if (variables.header_attributes) {
-      header_attributes = variables.header_attributes;
-    }
-    var html = '<div ' + drupalgap_attributes(variables.attributes) + '>' +
-      '<' + header_type + ' ' + drupalgap_attributes(header_attributes) + '>' +
-        variables.header +
-      '</' + header_type + '>' + variables.content + '</div>';
-    return html;
-  }
-  catch (error) { console.log('theme_collapsible - ' + error); }
-}
-
-/**
- * Themes a collapsibleset widget.
- * @param {Object} variables
- * @return {String}
- */
-function theme_collapsibleset(variables) {
-  try {
-    variables.attributes['data-role'] = 'collapsible-set';
-    var html = '<div ' + drupalgap_attributes(variables.attributes) + '>';
-    for (var index in variables.items) {
-        if (!variables.items.hasOwnProperty(index)) { continue; }
-        var item = variables.items[index];
-        html += theme('collapsible', item);
-    }
-    html += '</div>';
-    return html;
-  }
-  catch (error) { console.log('theme_collapsibleset - ' + error); }
-}
-
-/**
- * Themes a controlgroup widget.
- * @param {Object} variables
- * @return {String}
- */
-function theme_controlgroup(variables) {
-  try {
-    variables.attributes['data-role'] = 'controlgroup';
-    var html = '<div ' + drupalgap_attributes(variables.attributes) + '>';
-    for (var index in variables.items) {
-      if (!variables.items.hasOwnProperty(index)) { continue; }
-      var item = variables.items[index];
-      html += item;
-    }
-    html += '</div>';
-    return html;
-  }
-  catch (error) { console.log('theme_controlgroup - ' + error); }
-}
-
-/**
- * Themes a header widget.
- * @param {Object} variables
- * @return {String}
- */
-function theme_header(variables) {
-  try {
-    variables.attributes['data-role'] = 'header';
-    if (typeof variables.type === 'undefined') { type = 'h2'; }
-    var html = '<div ' + drupalgap_attributes(variables.attributes) + '>' +
-      '<' + type + '>' + variables.text + '</' + type + '></div>';
-    return html;
-  }
-  catch (error) { console.log('theme_header - ' + error); }
-}
-
-/**
- * Implementation of theme_image().
- * @param {Object} variables
- * @return {String}
- */
-function theme_image(variables) {
-  try {
-    // Turn the path, alt and title into attributes if they are present.
-    if (variables.path) { variables.attributes.src = variables.path; }
-    if (variables.alt) { variables.attributes.alt = variables.alt; }
-    if (variables.title) { variables.attributes.title = variables.title; }
-    // Render the image.
-    return '<img ' + drupalgap_attributes(variables.attributes) + ' />';
-  }
-  catch (error) { console.log('theme_image - ' + error); }
-}
-
-
-/**
- * Implementation of theme_audio().
- * @param {Object} variables
- * @return {String}
- */
-function theme_audio(variables) {
-  try {
-    // Turn the path, alt and title into attributes if they are present.
-    if (variables.path) { variables.attributes.src = variables.path; }
-    if (variables.alt) { variables.attributes.alt = variables.alt; }
-    if (variables.title) { variables.attributes.title = variables.title; }
-    // Render the audio player.
-    return '<audio controls ' + drupalgap_attributes(variables.attributes) +
-    '></audio>';
-  }
-  catch (error) { console.log('theme_audio - ' + error); }
-}
-
-/**
- * Implementation of theme_video().
- * @param {Object} variables
- * @return {String}
- */
-function theme_video(variables) {
-  try {
-    // Turn the path, alt and title into attributes if they are present.
-    if (variables.path) { variables.attributes.src = variables.path; }
-    if (variables.alt) { variables.attributes.alt = variables.alt; }
-    if (variables.title) { variables.attributes.title = variables.title; }
-    // Add the 'webkit-playsinline' attribute on iOS devices if no one made a
-    // decision about it being there or not.
-    if (
-      typeof device !== 'undefined' &&
-      device.platform == 'iOS' &&
-      typeof variables.attributes['webkit-playsinline'] === 'undefined'
-    ) { variables.attributes['webkit-playsinline'] = ''; }
-    // Render the video player.
-    return '<video ' + drupalgap_attributes(variables.attributes) +
-    '></video>';
-  }
-  catch (error) { console.log('theme_video - ' + error); }
-}
-
-/**
- * Implementation of theme_image_style().
- * @param {Object} variables
- * @return {String}
- */
-function theme_image_style(variables) {
-  try {
-    variables.path = image_style_url(variables.style_name, variables.path);
-    return theme_image(variables);
-  }
-  catch (error) { console.log('theme_image - ' + error); }
-}
-
-/**
- * Theme's an item from an MVC collection.
- * @param {Object} variables
- * @return {String}
- */
-function theme_item(variables) {
-  try {
-    var html = '';
-    for (var field in variables.item) {
-        if (!variables.item.hasOwnProperty(field)) { continue; }
-        var value = variables.item[field];
-        html +=
-          '<h2>' + variables.model.fields[field].title + '</h2>' +
-          '<p>' + value + '</p>';
-    }
-    return html;
-  }
-  catch (error) { console.log('theme_item - ' + error); }
-}
-
-/**
- * Implementation of theme_item_list().
- * @param {Object} variables
- * @return {String}
- */
-function theme_item_list(variables) {
-  try {
-    // We'll theme an empty list unordered list by default, if there is a type
-    // of list specified we'll use that, and if there are some items we'll
-    // theme them too.
-    var type = 'ul';
-    if (variables.type) { type = variables.type; }
-    var html = '';
-    if (variables.title) { html += '<h2>' + variables.title + '</h2>'; }
-    html += '<' + type + ' ' +
-      drupalgap_attributes(variables.attributes) + '>';
-    if (variables.items && variables.items.length > 0) {
-      var listview = typeof variables.attributes['data-role'] !== 'undefined' &&
-        variables.attributes['data-role'] == 'listview';
-      for (var index in variables.items) {
-          if (!variables.items.hasOwnProperty(index)) { continue; }
-          var item = variables.items[index];
-          var icon = null;
-          html += '<li';
-          if (listview && (icon = $(item).attr('data-icon'))) {
-            // If we're in a listview and the item specifies an icon,
-            // add the icon attribute to the list item element.
-            html += ' data-icon="' + icon + '"';
-          }
-          html += '>' + item + '</li>';
-      }
-    }
-    html += '</' + type + '>';
-    return html;
-  }
-  catch (error) { console.log('theme_item_list - ' + error); }
-}
-
-/**
- * Identical to theme_item_list, except this turns the list into a jQM listview.
- * @param {Object} variables
- * @return {String}
- */
-function theme_jqm_item_list(variables) {
-  try {
-    if (variables.attributes) {
-      if (
-        variables.attributes['data-role'] &&
-        variables.attributes['data-role'] != 'listview'
-      ) { }
-      else {
-        variables.attributes['data-role'] = 'listview';
-      }
-    }
-    else {
-      variables.attributes['data-role'] = 'listview';
-    }
-    return theme_item_list(variables);
-  }
-  catch (error) { console.log('theme_jqm_item_list - ' + error); }
-}
-
-/**
- * Implementation of theme_link().
- * @param {Object} variables
- * @return {String}
- */
-function theme_link(variables) {
-  try {
-    var text = '';
-    if (variables.text) { text = variables.text; }
-    if (typeof variables.path !== 'undefined' && variables.path != null) {
-
-      // If the path begins with a hashtag, just render the link as is with the
-      // hashtag for the href.
-      if (variables.path.indexOf('#') == 0) {
-        variables.attributes['href'] = variables.path;
-        return '<a ' + drupalgap_attributes(variables.attributes) + '>' +
-          text +
-        '</a>';
-      }
-
-      // By default our onclick will use a drupalgap_goto(). If we have any
-      // incoming link options, then modify the link accordingly.
-      var onclick = 'drupalgap_goto(\'' + variables.path + '\');';
-      if (variables.options) {
-
-        // Use an InAppBrowser?
-        if (variables.options.InAppBrowser) {
-          onclick =
-            "window.open('" + variables.path + "', '_blank', 'location=yes');";
-        }
-
-        else {
-
-          // Prepare the path.
-          variables.path = _drupalgap_goto_prepare_path(variables.path);
-
-          // All other options need to be extracted into a JSON string for the
-          // onclick handler.
-
-          var goto_options = '';
-          for (var option in variables.options) {
-              if (!variables.options.hasOwnProperty(option)) { continue; }
-              var value = variables.options[option];
-              if (option == 'attributes') { continue; }
-              if (typeof value === 'string') { value = "'" + value + "'"; }
-              goto_options += option + ':' + value + ',';
-          }
-          onclick =
-            'drupalgap_goto(\'' +
-              variables.path + '\', ' +
-              '{' + goto_options + '});';
-
-        }
-      }
-
-      // Is this link active?
-      if (variables.path == drupalgap_path_get()) {
-        if (variables.attributes['class'].indexOf('ui-btn-active') == -1) {
-          variables.attributes['class'] += ' ui-btn-active ';
-        }
-        if (variables.attributes['class'].indexOf('ui-state-persist') == -1) {
-          variables.attributes['class'] += ' ui-state-persist ';
-        }
-      }
-
-      // Finally, return the link.
-      return '<a href="#" onclick="javascript:' + onclick + '"' +
-        drupalgap_attributes(variables.attributes) + '>' + text + '</a>';
-
-    }
-    else {
-
-      // The link has no path, so just render the text and attributes.
-      if (typeof variables.attributes.href === 'undefined') {
-        variables.attributes.href = '#';
-      }
-      return '<a ' + drupalgap_attributes(variables.attributes) + '>' +
-        text +
-      '</a>';
-
-    }
-  }
-  catch (error) { console.log('theme_link - ' + error); }
-}
-
-/**
- * Themes the logout button.
- * @param {Object} variables
- * @return {String}
- */
-function theme_logout(variables) {
-  try {
-    return bl(
-      t('Logout'),
-      'user/logout',
-      {
-        attributes: {
-          'data-icon': 'action',
-          'data-iconpos': 'right'
-        }
-      }
-    );
-  }
-  catch (error) { console.log('theme_logout - ' + error); }
-}
 
-/**
- * Themes a popup widget.
- * @param {Object} variables
- * @return {String}
- */
-function theme_popup(variables) {
-  try {
-    variables.attributes['data-role'] = 'popup';
-    var button_attributes = {};
-    if (variables.button_attributes) {
-      button_attributes = variables.button_attributes;
-    }
-    button_attributes.href = '#' + variables.attributes.id;
-    button_attributes['data-rel'] = 'popup';
-    var html = bl(variables.button_text, null, {
-        attributes: button_attributes
-    }) +
-    '<div ' + drupalgap_attributes(variables.attributes) + '>' +
-      variables.content +
-    '</div>';
-    return html;
-  }
-  catch (error) { console.log('theme_popup - ' + error); }
-}
-
-/**
- * Implementation of theme_submit().
- * @param {Object} variables
- * @return {String}
- */
-function theme_submit(variables) {
-  try {
-    return '<button ' + drupalgap_attributes(variables.attributes) + '>' +
-      variables.element.value +
-    '</button>';
-  }
-  catch (error) { console.log('theme_submit - ' + error); }
-}
-
-/**
- * Implementation of theme_table().
- * @param {Object} variables
- * @return {String}
- */
-function theme_table(variables) {
-  try {
-    var html = '<table ' + drupalgap_attributes(variables.attributes) + '>';
-    if (variables.header) {
-      html += '<thead><tr>';
-      for (var index in variables.header) {
-          if (!variables.header.hasOwnProperty(index)) { continue; }
-          var column = variables.header[index];
-          if (column.data) {
-            html += '<td>' + column.data + '</td>';
-          }
-      }
-      html += '</tr></thead>';
-    }
-    html += '<tbody>';
-    if (variables.rows) {
-      for (var row_index in variables.rows) {
-          if (!variables.rows.hasOwnProperty(row_index)) { continue; }
-          var row = variables.rows[row_index];
-          html += '<tr>';
-          if (row) {
-            for (var column_index in row) {
-              if (!row.hasOwnProperty(column_index)) { continue; }
-              var column = row[column_index];
-              html += '<td>' + column + '</td>';
-            }
-          }
-          html += '</tr>';
-      }
-    }
-    return html + '</tbody></table>';
-  }
-  catch (error) { console.log('theme_table - ' + error); }
-}
-
-/**
- * Theme a jQueryMobile table.
- * @param {Object} variables
- * @return {String}
- */
-function theme_jqm_table(variables) {
-  try {
-    variables.attributes['data-role'] = 'table';
-    variables.attributes['data-mode'] = 'reflow';
-    return theme_table(variables);
-  }
-  catch (error) { console.log('theme_jqm_table - ' + error); }
-}
-
-
-/**
- * An interal callback used to handle the setting of the page title during the
- * pageshow event.
- * @param {*} page_arguments
- */
-function _drupalgap_page_title_pageshow(page_arguments) {
-  try {
-    var router_path = drupalgap_router_path_get();
-    // Set the page title. First we'll see if the hook_menu() item has a
-    // title variable set, then check for a title_callback function.
-    var title_arguments = [];
-    if (typeof drupalgap.menu_links[router_path].title !== 'undefined') {
-      drupalgap_set_title(drupalgap.menu_links[router_path].title);
-    }
-    if (
-      typeof drupalgap.menu_links[router_path].title_callback !== 'undefined'
-    ) {
-      var function_name = drupalgap.menu_links[router_path].title_callback;
-      if (drupalgap_function_exists(function_name)) {
-        // Grab the title callback function.
-        var fn = window[function_name];
-        // Place the internal success callback handler on the front of the
-        // title arguments.
-        title_arguments.unshift(_drupalgap_page_title_pageshow_success);
-        // Are there any additional arguments to send to the title callback?
-        if (drupalgap.menu_links[router_path].title_arguments) {
-          // For each title argument, if the argument is an integer, grab the
-          // corresponding arg(#), otherwise just push the arg onto the title
-          // arguments.
-          var args = arg(null, drupalgap_path_get());
-          var _title_arguments = drupalgap.menu_links[router_path].title_arguments;
-          for (var index in _title_arguments) {
-              if (!_title_arguments.hasOwnProperty(index)) { continue; }
-              var object = _title_arguments[index];
-              if (is_int(object) && args[object]) {
-                title_arguments.push(args[object]);
-              }
-              else { title_arguments.push(object); }
-          }
-        }
-        // Call the title callback function with the title arguments.
-        drupalgap_set_title(
-          fn.apply(
-            null,
-            Array.prototype.slice.call(title_arguments)
-          )
-        );
-      }
-    }
-    else {
-      _drupalgap_page_title_pageshow_success(drupalgap_get_title());
-    }
-  }
-  catch (error) { console.log('_drupalgap_page_title_pageshow - ' + error); }
-}
-
-/**
- * An internal function used to set the page title when the page title callback
- * function is successful.
- * @param {String} title
- */
-function _drupalgap_page_title_pageshow_success(title) {
-  try {
-    var id = system_title_block_id(drupalgap_path_get());
-    $('h1#' + id).html(title);
-  }
-  catch (error) {
-    console.log('_drupalgap_page_title_pageshow_success - ' + error);
-  }
 }
-
 
 /**
  * When a form submission for an entity is assembling the entity json object to
@@ -7377,6 +7631,7 @@ function hook_views_exposed_filter(form, form_state, element, filter, field) {
   catch (error) { console.log('hook_views_exposed_filter - ' + error); }
 }
 
+
 /**
  * Implements hook_menu().
  * @return {Object}
@@ -7544,6 +7799,7 @@ function comment_edit(form, form_state, comment, node) {
     var bundle = 'comment_node_' + node_type;
 
     // Setup form defaults.
+    form.id += '_' + comment.nid;  // Append the node id the comment form id.
     form.entity_type = 'comment';
     form.bundle = bundle;
     form.action = 'node/' + comment.nid;
@@ -7630,9 +7886,9 @@ function comment_services_postprocess(options, result) {
                     $(container).append(
                       theme('comment', { comment: comment })
                     ).trigger('create');
-                    scrollToElement('#' + container_id + ' :last-child', 500);
+                    scrollToElement('#' + container_id + ' #' + comment_container_id(comment.cid), 500);
                     var form_selector = '#' + drupalgap_get_page_id() +
-                      ' #comment_edit';
+                      ' #comment_edit' + '_' + comment.nid;
                     drupalgap_form_clear(form_selector);
                   }
               });
@@ -7828,7 +8084,7 @@ function contact_site_form(form, form_state) {
       type: 'textfield',
       required: true
     };
-    form.elements.category = {
+    form.elements.cid = {
       title: t('Category'),
       type: 'select',
       required: true
@@ -7868,21 +8124,17 @@ function contact_site_form_pageshow() {
   try {
     contact_index({
         success: function(results) {
+          var select = $('#edit-contact-site-form-cid');
           if (!results || !results.length) { return; }
           for (var index in results) {
               if (!results.hasOwnProperty(index)) { continue; }
               var result = results[index];
               var selected = result.selected == 1 ? 'selected' : '';
-              var option =
-                '<option value="' + result.cid + '" ' + selected + '>' +
-                  result.category +
-                '</option>';
-              $('#edit-contact-site-form-category').append(option);
+              var option = '<option value="' + result.cid + '" ' + selected + '>' + result.category + '</option>';
+              $(select).append(option);
           }
-          $('#edit-contact-site-form-category').selectmenu('refresh');
-          if (results.length == 1) {
-            $('#contact_site_form .field-name-category').hide();
-          }
+          $(select).selectmenu('refresh');
+          if (results.length == 1) { $(select).hide(); }
         }
     });
   }
@@ -7899,7 +8151,7 @@ function contact_site_form_submit(form, form_state) {
     name: form_state.values['name'],
     mail: form_state.values['mail'],
     subject: form_state.values['subject'],
-    category: form_state.values['category'],
+    cid: form_state.values['cid'],
     message: form_state.values['message'],
     copy: form_state.values['copy']
   };
@@ -8038,7 +8290,6 @@ function contact_personal_form_submit(form, form_state) {
     mail: form_state.values['mail'],
     to: form_state.values['to'],
     subject: form_state.values['subject'],
-    category: form_state.values['category'],
     message: form_state.values['message'],
     copy: form_state.values['copy']
   };
@@ -8082,6 +8333,14 @@ function contact_personal_form_to_container_id(recipient) {
 }
 
 
+/**
+ * Given an entity type and optional bundle, this will return the view mode machine name to use.
+ * It defaults to "drupalgap", but can be configured.
+ * @param {String} entity_type
+ * @param {String} bundle
+ * @returns {string}
+ * @see http://docs.drupalgap.org/7/Entities/Display_Modes
+ */
 function drupalgap_entity_view_mode(entity_type, bundle) {
   var view_mode = 'drupalgap';
   if (typeof drupalgap.settings.view_modes !== 'undefined') {
@@ -8101,6 +8360,108 @@ function drupalgap_entity_view_mode(entity_type, bundle) {
   }
   return view_mode;
 }
+
+/**
+ * Given an entity type, id and optional context, this will return a container id to be used
+ * when constructing a placeholder to load/display/edit an entity.
+ * @param {String} entity_type
+ * @param {Number} entity_id
+ * @param {String} context An optional context to use, e.g. "edit"
+ * @returns {string}
+ */
+function drupalgap_get_entity_container_id(entity_type, entity_id, context) {
+  var id = 'dg-entity-container-' + entity_type + '-' + entity_id;
+  if (context) { id += '-' + context; }
+  return id;
+}
+
+/**
+ * A page_callback function used to build an empty placeholder for an entity and inline
+ * JavaScript to retrieve the entity for display.
+ * @param {String} handler
+ * @param {String} entity_type
+ * @param {Number} entity_id
+ * @returns {string}
+ */
+function drupalgap_get_entity(handler, entity_type, entity_id, context) {
+  return '<div ' + drupalgap_attributes({
+    id: !context ?
+        drupalgap_get_entity_container_id(entity_type, entity_id) :
+        drupalgap_get_entity_container_id(entity_type, entity_id, context),
+    'class': 'dg-entity-container ' + entity_type
+  }) + '></div>' + drupalgap_jqm_page_event_script_code({
+    jqm_page_event_callback: 'drupalgap_get_entity_pageshow',
+    jqm_page_event_args: JSON.stringify({
+      handler: handler,
+      entity_type: entity_type,
+      entity_id: entity_id
+    })
+  });
+}
+
+/**
+ * A pageshow function used to retrieve an entity, pass it along to its handler for rendering,
+ * and then inject the handler's render array into the waiting placeholder.
+ * @param {Object} options
+ */
+function drupalgap_get_entity_pageshow(options) {
+  var context = drupalgap.menu_links[drupalgap_router_path_get()].page_arguments.length == 4 ?
+      drupalgap.menu_links[drupalgap_router_path_get()].page_arguments[3] : null;
+  entity_load(options.entity_type, options.entity_id, {
+    success: function(entity) {
+      var id = drupalgap_get_entity_container_id(options.entity_type, options.entity_id, context);
+      $('#' + id).html(drupalgap_render(window[options.handler](entity))).trigger('create');
+      if (drupalgap.page.options.success) { drupalgap.page.options.success(entity); }
+    },
+    error: drupalgap.page.options.error ? drupalgap.page.options.error : null
+  });
+}
+
+/**
+ * A page_callback function used to build an empty placeholder for an entity and inline
+ * JavaScript to retrieve the entity for editing.
+ * @param {String} handler
+ * @param {String} entity_type
+ * @param {Number} entity_id
+ * @returns {string}
+ */
+function drupalgap_get_entity_form(handler, entity_type, entity_id, context) {
+  context = !context ? 'edit' : context;
+  return '<div ' + drupalgap_attributes({
+        id: drupalgap_get_entity_container_id(entity_type, entity_id, context),
+        'class': 'dg-entity-container ' + entity_type
+      }) + '></div>' + drupalgap_jqm_page_event_script_code({
+        jqm_page_event_callback: 'drupalgap_get_entity_form_pageshow',
+        jqm_page_event_args: JSON.stringify({
+          handler: handler,
+          entity_type: entity_type,
+          entity_id: entity_id
+        })
+      });
+}
+
+/**
+ * A pageshow function used to retrieve an entity, pass it along to a form builder, and then
+ * inject the form into the waiting placeholder.
+ * @param {Object} options
+ */
+function drupalgap_get_entity_form_pageshow(options) {
+  var context = drupalgap.menu_links[drupalgap_router_path_get()].page_arguments.length == 4 ?
+      drupalgap.menu_links[drupalgap_router_path_get()].page_arguments[3] : 'edit';
+  var done = function(entity) {
+    var id = drupalgap_get_entity_container_id(options.entity_type, options.entity_id, context);
+    $('#' + id).html(drupalgap_get_form(options.handler, entity)).trigger('create');
+    if (drupalgap.page.options.success) { drupalgap.page.options.success(entity); }
+  };
+  if (options.entity_id == 'add') { done({}); }
+  else {
+    entity_load(options.entity_type, options.entity_id, {
+      success: done,
+      error: drupalgap.page.options.error ? drupalgap.page.options.error : null
+    });
+  }
+}
+
 /**
  * Implements hook_install().
  */
@@ -8276,7 +8637,7 @@ function drupalgap_entity_render_content(entity_type, entity) {
         // Save the field display and weight. Use the weight from the field's render element if it's available,
         // otherwise fallback to the weight mentioned in the display.
         field_displays[field_name] = display;
-        field_weights[field_name] = typeof entity[field_name].weight !== 'undefined' ?
+        field_weights[field_name] = entity[field_name] && typeof entity[field_name].weight !== 'undefined' ?
             entity[field_name].weight : display.weight;
     }
 
@@ -8326,6 +8687,7 @@ function drupalgap_entity_render_content(entity_type, entity) {
 
     // Update this entity in local storage so the content property sticks.
     if (entity_caching_enabled(entity_type, bundle)) {
+      _entity_set_expiration_time(entity_type, entity);
       _entity_local_storage_save(
         entity_type,
         entity[entity_primary_key(entity_type)],
@@ -8369,7 +8731,7 @@ function drupalgap_entity_render_field(entity_type, entity, field_name,
       else { module = field.widget.module; }
     }
     var function_name = module + '_field_formatter_view';
-    if (drupalgap_function_exists(function_name)) {
+    if (function_exists(function_name)) {
       // Grab the field formatter function, then grab the field items
       // from the entity, then call the formatter function and append its result
       // to the entity's content.
@@ -9156,26 +9518,21 @@ function entity_services_request_pre_postprocess_alter(options, result) {
 
 
 /**
- * Given a field name, this will return its field info.
+ * Given a field name, this will return its field info or null if it doesn't exist.
  * @param {String} field_name
  * @return {Object}
  */
 function drupalgap_field_info_field(field_name) {
-  try {
-    return drupalgap.field_info_fields[field_name];
-  }
-  catch (error) { console.log('drupalgap_field_info_field - ' + error); }
+  return drupalgap.field_info_fields && drupalgap.field_info_fields[field_name] ?
+      drupalgap.field_info_fields[field_name] : null;
 }
 
 /**
- * Returns info on all fields.
+ * Returns info on all fields or null if they don't exist.
  * @return {Object}
  */
 function drupalgap_field_info_fields() {
-  try {
-    return drupalgap.field_info_fields;
-  }
-  catch (error) { console.log('drupalgap_field_info_fields - ' + error); }
+  return drupalgap.field_info_fields ? drupalgap.field_info_fields : null;
 }
 
 /**
@@ -9189,18 +9546,19 @@ function drupalgap_field_info_fields() {
 function drupalgap_field_info_instance(entity_type, field_name, bundle_name) {
   try {
     var instances = drupalgap_field_info_instances(entity_type, bundle_name);
+    var warningPrefix = 'WARNING: drupalgap_field_info_instance - ';
     if (!instances) {
-      var msg = 'WARNING: drupalgap_field_info_instance - instance was null ' +
-      'for entity (' + entity_type + ') bundle (' + bundle_name + ') using ' +
-      'field (' + field_name + ')';
-      console.log(msg);
+      console.log(
+        warningPrefix +
+        'instance was null for entity (' + entity_type + ') bundle (' + bundle_name + ') using field (' + field_name + ')'
+      );
       return null;
     }
     if (!instances[field_name]) {
-      var msg = 'WARNING: drupalgap_field_info_instance - ' +
-        '"' + field_name + '" does not exist for entity (' + entity_type + ')' +
-        ' bundle (' + bundle_name + ')';
-      console.log(msg);
+      console.log(
+          warningPrefix +
+          '"' + field_name + '" does not exist for entity (' + entity_type + ') bundle (' + bundle_name + ')'
+      );
       return null;
     }
     return instances[field_name];
@@ -9217,27 +9575,20 @@ function drupalgap_field_info_instance(entity_type, field_name, bundle_name) {
  */
 function drupalgap_field_info_instances(entity_type, bundle_name) {
   try {
-    var field_info_instances;
+    var instances = drupalgap.field_info_instances;
+    if (!instances) { return null; }
+    var field_info_instances = null;
     // If there is no bundle, pull the fields out of the wrapper.
     // @TODO there appears to be a special case with commerce_products, in that
     // they aren't wrapped like normal entities (see the else statement when a
     // bundle name isn't present). Or do we have a bug here, and we shouldn't
     // be expecting the wrapper in the first place?
     if (!bundle_name) {
-      if (entity_type == 'commerce_product') {
-        field_info_instances =
-          drupalgap.field_info_instances[entity_type];
-      }
-      else {
-        field_info_instances =
-          drupalgap.field_info_instances[entity_type][entity_type];
-      }
+      field_info_instances = entity_type == 'commerce_product' ?
+          instances[entity_type] : instances[entity_type][entity_type];
     }
-    else {
-      if (typeof drupalgap.field_info_instances[entity_type] !== 'undefined') {
-        field_info_instances =
-          drupalgap.field_info_instances[entity_type][bundle_name];
-      }
+    else if (typeof instances[entity_type] !== 'undefined') {
+      field_info_instances = instances[entity_type][bundle_name];
     }
     return field_info_instances;
   }
@@ -9340,7 +9691,7 @@ function drupalgap_field_info_instances_add_to_form(entity_type, bundle, form, e
           // and then available during hook_field_widget_form() and the form
           // submission process.
           var fn = field.widget.module + '_field_info_instance_add_to_form';
-          if (drupalgap_function_exists(fn)) {
+          if (function_exists(fn)) {
             window[fn](entity_type, bundle, form, entity, form.elements[name]);
           }
 
@@ -9737,6 +10088,12 @@ function options_field_widget_form(form, form_state, field, instance, langcode, 
             if (instance.default_value && instance.default_value[delta] &&
               typeof instance.default_value[delta].value !== 'undefined') {
                 items[delta].value = instance.default_value[delta].value;
+                if (items[delta].required) {
+                  delete items[delta].options[''];
+                }
+                if (items[delta].item && typeof items[delta].item.value !== 'undefined') {
+                  items[delta].value = items[delta].item.value;
+                }
             }
           }
         }
@@ -10367,15 +10724,19 @@ function _image_field_form_process(form, form_state, options) {
       var image_file_name = Drupal.user.uid + '_' + d.valueOf() + '.jpg';
 
       // Build the data for the file create resource. If it's private, adjust the filepath.
+      var image_file_path = form.elements[name].field_info_instance.settings.file_directory;
+      if (image_file_path !== "") {
+        image_file_path += "/";
+      }
       var file = {
         file: {
           file: image_phonegap_camera_options[name][0].image,
           filename: image_file_name,
-          filepath: 'public://' + image_file_name
+          filepath: 'public://' + image_file_path + image_file_name
         }
       };
       if (!empty(Drupal.settings.file_private_path)) {
-        file.file.filepath = 'private://' + image_file_name;
+        file.file.filepath = 'private://' + image_file_path + image_file_name;
       }
 
       // Change the loader mode to saving, and save the file.
@@ -10660,7 +11021,7 @@ function menu_block_view_pageshow(options) {
           var load_function = load_function_prefix + '_load';
 
           // If the load function exists, load the entity.
-          if (drupalgap_function_exists(load_function)) {
+          if (function_exists(load_function)) {
             var entity_fn = window[load_function];
             // Load the entity. MVC items need to pass along the module name and
             // model type to its load function. All other entity load functions
@@ -13178,7 +13539,7 @@ function theme_taxonomy_term_reference(variables) {
     if (widget_type == 'options_select') { widget_type = 'select'; }
     var widget_function = 'theme_' + widget_type;
     var widget_id = variables.attributes.id + '-' + widget_type;
-    if (drupalgap_function_exists(widget_function)) {
+    if (function_exists(widget_function)) {
 
       // Grab the function in charge of themeing this widget.
       var fn = window[widget_function];
@@ -13434,7 +13795,10 @@ function user_login_form(form, form_state) {
       type: 'textfield',
       title: t('Username'),
       title_placeholder: true,
-      required: true
+      required: true,
+      attributes: {
+        autocapitalize: 'none'
+      }
     };
     form.elements.pass = {
       type: 'password',
@@ -13442,7 +13806,7 @@ function user_login_form(form, form_state) {
       title_placeholder: true,
       required: true,
       attributes: {
-        onkeypress: "drupalgap_form_onkeypress('" + form.id + "')"
+        onkeypress: "drupalgap_form_onkeypress('" + form.id + "', event)"
       }
     };
     form.elements.submit = {
@@ -13477,7 +13841,11 @@ function user_login_form_submit(form, form_state) {
   try {
     user_login(form_state.values.name, form_state.values.pass, {
       success: function(result) {
-        drupalgap_goto(drupalgap.settings.front, { reloadPage:true });
+        drupalgap_goto(
+            typeof form.action !== 'undefined' ?
+                form.action : drupalgap.settings.front,
+            { reloadPage:true }
+        );
       }
     });
   }
@@ -13592,6 +13960,8 @@ function user_register_form_submit(form, form_state) {
         var options = {
           title: t('Registered')
         };
+        var destination = typeof form.action !== 'undefined' ?
+            form.action : drupalgap.settings.front;
         // Check if e-mail verification is required or not..
         if (!drupalgap.site_settings.user_email_verification) {
           // E-mail verification not needed, if administrator approval is
@@ -13601,7 +13971,7 @@ function user_register_form_submit(form, form_state) {
               config.user_mail_register_pending_approval_required_body,
               options
             );
-            drupalgap_goto('');
+            drupalgap_goto(destination);
           }
           else {
             drupalgap_alert(
@@ -13617,7 +13987,7 @@ function user_register_form_submit(form, form_state) {
                   }
               });
             }
-            else { drupalgap_goto(''); }
+            else { drupalgap_goto(destination); }
           }
         }
         else {
@@ -13626,7 +13996,7 @@ function user_register_form_submit(form, form_state) {
             config.user_mail_register_email_verification_body,
             options
           );
-          drupalgap_goto('');
+          drupalgap_goto(destination);
         }
       },
       error: function(xhr, status, message) {
@@ -13776,13 +14146,12 @@ function user_profile_form_submit(form, form_state) {
  * @return {Object}
  */
 function user_pass_form(form, form_state) {
-  try {
     form.elements['name'] = {
       type: 'textfield',
       title: t('Username or e-mail address'),
       required: true,
       attributes: {
-        onkeypress: "drupalgap_form_onkeypress('" + form.id + "')"
+        onkeypress: "drupalgap_form_onkeypress('" + form.id + "', event)"
       }
     };
     form.elements['submit'] = {
@@ -13790,8 +14159,6 @@ function user_pass_form(form, form_state) {
       value: t('E-mail new password')
     };
     return form;
-  }
-  catch (error) { console.log('user_pass_form - ' + error); }
 }
 
 /**
@@ -13800,7 +14167,6 @@ function user_pass_form(form, form_state) {
  * @param {Object} form_state
  */
 function user_pass_form_submit(form, form_state) {
-  try {
     user_request_new_password(form_state.values['name'], {
         success: function(result) {
           if (result[0]) {
@@ -13813,11 +14179,12 @@ function user_pass_form_submit(form, form_state) {
               t('There was a problem sending an e-mail to your address.');
             drupalgap_set_message(msg, 'warning');
           }
-          drupalgap_goto('user/login');
+          var path = 'user/login';
+          if (form.action) { path = form.action; }
+          if (_GET('destination')) { path = _GET('destination'); }
+          drupalgap_goto(path, { reloadPage: true });
         }
     });
-  }
-  catch (error) { console.log('user_pass_form_submit - ' + error); }
 }
 
 
@@ -14012,7 +14379,7 @@ function user_page() {
  */
 function user_register_access() {
   try {
-    switch (drupalgap.site_settings.user_register) {
+    switch (drupalgap.site_settings.user_register.toString()) {
       case '0': // admins only can register
         return false;
         break;
@@ -14036,9 +14403,7 @@ function user_services_postprocess(options, result) {
     if (options.service != 'user') { return; }
     var resources = ['login', 'logout', 'register'];
     // Only process login, logout and registration.
-    if (!in_array(options.resource, resources) || (arg(0) != 'user' && !in_array(arg(1), resources))) {
-      return;
-    }
+    if (!in_array(options.resource, resources)) { return; }
     // If there were any form errors, alert them to the user.
     if (!result.responseText) { return; }
     var response = JSON.parse(result.responseText);
@@ -14393,7 +14758,7 @@ function views_exposed_form(form, form_state, options) {
           var field = drupalgap_field_info_field(field_name);
           var module = field.module;
           var handler = module + '_views_exposed_filter';
-          if (!drupalgap_function_exists(handler)) {
+          if (!function_exists(handler)) {
             dpm(
               'WARNING: views_exposed_form() - ' + handler + '() must be ' +
               'created to assemble the ' + field.type + ' filter used by ' +
@@ -14426,6 +14791,20 @@ function views_exposed_form(form, form_state, options) {
             if (filter.options.vocabulary != '') {
               autocomplete.vid = taxonomy_vocabulary_get_vid_from_name(filter.options.vocabulary);
             }
+            $.extend(element, autocomplete, true);
+          }
+          // User ID exposed filter.
+          else if (filter.definition.handler == 'views_handler_filter_user_name') {
+            element.type = 'autocomplete';
+            var autocomplete = {
+              remote: true,
+              custom: true,
+              handler: 'index',
+              entity_type: 'user',
+              value: 'name',
+              label: 'name',
+              filter: 'name'
+            };
             $.extend(element, autocomplete, true);
           }
           else if (element.type == 'select') {
@@ -14561,14 +14940,9 @@ function views_exposed_form_reset() {
  */
 function theme_view(variables) {
   try {
-    // Throw a warning if no id is provided.
-    if (!variables.attributes.id) {
-      console.log(
-        'WARNING: theme_view() - No id specified on attributes! ' +
-        'A random id will be generated instead.'
-      );
-      variables.attributes.id = 'views-view--' + user_password();
-    }
+    // Create a random id attribute if one wasn't provided.
+    if (!variables.attributes.id) { variables.attributes.id = 'views-view--' + user_password(); }
+
     // Since multiple pages can stack up in the DOM, warn the developer if they
     // re-use a Views ID that is already in the DOM. If the ID hasn't been used
     // yet, add it to the drupalgap.views.ids array.
@@ -14761,12 +15135,9 @@ function theme_views_view(variables) {
       setTimeout(function() {
           $(selector).trigger('create').show('fast');
       }, 100);
-      if (
-        variables.empty_callback &&
-        function_exists(variables.empty_callback)
-      ) {
+      if (variables.empty_callback && function_exists(variables.empty_callback)) {
         var empty_callback = window[variables.empty_callback];
-        return views_exposed_form_html + empty_callback(results.view);
+        return views_exposed_form_html + drupalgap_render(empty_callback(results.view, variables));
       }
       return html + views_exposed_form_html;
     }
@@ -15020,6 +15391,23 @@ function drupalgap_views_get_result_formats(variables) {
     format_attributes['class'] += ' views-results ';
 
     switch (variables.format) {
+      case 'grid':
+
+          // Determine columns and jqm grid type.
+          var columns = jqm_grid_verify_columns(variables);
+          var grid = jqm_grid_get_type(columns);
+
+          // Prep the container class name.
+          if (!format_attributes.class) { format_attributes.class = ''; }
+          format_attributes.class += ' ui-grid-' + grid + ' ';
+
+          // Build the strings.
+          open = '<div ' + drupalgap_attributes(format_attributes) + '>';
+          close = '</div>';
+          open_row = '<div class="ui-block">'; // This class will be replaced dynamically.
+          close_row = '</div>';
+        break;
+
       case 'ul':
         if (typeof format_attributes['data-role'] === 'undefined') {
           format_attributes['data-role'] = 'listview';
@@ -15029,6 +15417,7 @@ function drupalgap_views_get_result_formats(variables) {
         open_row = '<li>';
         close_row = '</li>';
         break;
+
       case 'ol':
         if (typeof format_attributes['data-role'] === 'undefined') {
           format_attributes['data-role'] = 'listview';
@@ -15038,6 +15427,7 @@ function drupalgap_views_get_result_formats(variables) {
         open_row = '<li>';
         close_row = '</li>';
         break;
+
       case 'table':
       case 'jqm_table':
         if (variables.format == 'jqm_table') {
@@ -15056,6 +15446,7 @@ function drupalgap_views_get_result_formats(variables) {
         open_row = '<tr>';
         close_row = '</tr>';
         break;
+
       case 'unformatted_list':
       default:
         if (typeof format_attributes['class'] === 'undefined') {
@@ -15090,22 +15481,33 @@ function drupalgap_views_get_result_formats(variables) {
 function drupalgap_views_render_rows(variables, results, root, child, open_row, close_row) {
   try {
     var html = '';
+    var totalRows = results[root].length;
     for (var count in results[root]) {
       if (!results[root].hasOwnProperty(count)) { continue; }
+
+      // Extract the row and mark its position.
       var object = results[root][count];
-      // Extract the row.
       var row = object[child];
-      // Mark the row position.
-      row._position = count;
+      row._position = parseInt(count);
+
       // If a row_callback function exists, call it to render the row,
       // otherwise use the default row render mechanism.
       var row_content = '';
       if (variables.row_callback && function_exists(variables.row_callback)) {
         row_callback = window[variables.row_callback];
-        row_content = row_callback(results.view, row);
+        row_content = row_callback(results.view, row, variables);
       }
       else { row_content = JSON.stringify(row); }
-      html += open_row + row_content + close_row;
+
+      // If we're rendering a grid, replace the class name for the current column. Otherwise
+      // just render the row as usual.
+      if (variables.format == 'grid') {
+        var className = jqm_grid_get_item_class(row._position, variables.columns);
+        var openRow = jqm_grid_set_item_row_class(open_row, className);
+        html += openRow + row_content + close_row;
+      }
+      else { html += open_row + row_content + close_row; }
+
     }
     return html;
   }

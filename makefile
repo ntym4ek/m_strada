@@ -3,21 +3,24 @@ files = src/dg.js\
                                 src/includes/autocomplete.inc.js\
                                 src/includes/block.inc.js\
                                 src/includes/common.inc.js\
-                                src/includes/form.elements.inc.js\
-                                src/includes/form.inc.js\
-                                src/includes/form.load.inc.js\
-                                src/includes/form.submission.inc.js\
-                                src/includes/form.theme.inc.js\
+                                src/includes/form/form.elements.js\
+                                src/includes/form/form.inc.js\
+                                src/includes/form/form.load.js\
+                                src/includes/form/form.submission.js\
+                                src/includes/form/form.theme.js\
                                 src/includes/go.inc.js\
-                                src/includes/page.inc.js\
-                                src/includes/region.inc.js\
                                 src/includes/menu.inc.js\
                                 src/includes/messages.inc.js\
+                                src/includes/page.inc.js\
+                                src/includes/region.inc.js\
+                                src/includes/render.inc.js\
                                 src/includes/theme.inc.js\
                                 src/includes/title.inc.js\
+                                src/includes/widget-grid.inc.js\
                                 src/modules/comment/comment.js\
                                 src/modules/contact/contact.js\
                                 src/modules/entity/entity.js\
+                                src/modules/entity/entity.helpers.js\
                                 src/modules/field/field.js\
                                 src/modules/file/file.js\
                                 src/modules/image/image.js\
