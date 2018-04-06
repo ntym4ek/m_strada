@@ -33,7 +33,7 @@ drupalgap.settings.locale = {
 
 // Site Path (do not use a trailing slash)
 // Drupal.settings.site_path = 'http://joy.kccc.local';
-Drupal.settings.site_path = 'https://joy-magazin.ru';
+Drupal.settings.site_path = 'https://joy-magazin1.ru';
 
 // Default Services Endpoint Path
 Drupal.settings.endpoint = 'drupalgap';
