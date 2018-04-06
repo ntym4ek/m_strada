@@ -171,9 +171,9 @@ Drupal.modules.contrib['logintoboggan'] = {};
 
 /** Custom Modules - www/app/modules/custom **/
 
-Drupal.modules.custom['address_book'] = {};
-Drupal.modules.custom['shipping'] = {};
-Drupal.modules.custom['payment'] = {};
+// Drupal.modules.custom['address_book'] = {};
+// Drupal.modules.custom['shipping'] = {};
+// Drupal.modules.custom['payment'] = {};
 Drupal.modules.custom['stradashop'] = {};
 
 /***************************************|
