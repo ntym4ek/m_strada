@@ -29,6 +29,7 @@ function nativeDroid_info() {
                 }
             }
         };
+
       return theme;
     }
     catch (error) { drupalgap_error(error); }
