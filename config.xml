@@ -2,11 +2,11 @@
 <widget xmlns = "http://www.w3.org/ns/widgets"
         xmlns:gap = "http://phonegap.com/ns/1.0"
         id        = "com.kccc.strada"
-        versionCode="1.02"
-        version   = "1.02">
+        versionCode="1.05"
+        version   = "1.05">
     <name>Дача.Сад.Огород</name>
     <description>Каталог продукции компании ООО "СТРАДА"</description>
-    <author href="kccc.ru" email="support@kccc.ru">TradeHouse</author>
+    <author href="joy-magazin.ru" email="support@joy-magazin.ru">STRADA</author>
 
     <platform name="ios" />
     <platform name="android" />
@@ -95,7 +95,7 @@
     <plugin name="cordova-plugin-whitelist" source="npm" />
 
     <access origin="*" subdomains="true"  />
-    <access origin="kccc.ru" subdomains="true"  />
+    <access origin="joy-magazin.ru" subdomains="true"  />
     <allow-navigation href="*" />
     <!--  -->
 
