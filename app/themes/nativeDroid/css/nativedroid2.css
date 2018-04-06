@@ -179,7 +179,7 @@ code {
 
 .ui-panel-position-left > .ui-panel-inner {
     position: absolute;
-    top: 1px;
+    top: 0px;
     left: 0;
     right: 0;
     bottom: 0px;

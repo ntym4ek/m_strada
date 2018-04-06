@@ -2562,7 +2562,7 @@ var _drupalgap_goto_query_string = null;
  */
 function drupalgap_goto(path) {
   try {
-
+console.log(path);
     // Extract any incoming options, set any defaults that weren't provided,
     // then populate the global page options variable.
     var options = {};

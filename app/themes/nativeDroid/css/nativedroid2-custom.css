@@ -27,8 +27,22 @@
 	width: 4.75em; height: 4.75em;
 }
 
+
 /* список категорий  */
-.catalog-item { padding: 15% 1em 15% 60px; }
+.catalog .ui-content .ui-listview { margin-bottom: 0; }
+.catalog .ui-content.region_content  { padding-bottom: 8px; }
+.catalog .views-results li:nth-child(1)  { background-color: #259b24; }
+.catalog .views-results li:nth-child(2)  { background-color: #cddc39; }
+.catalog .views-results li:nth-child(3)  { background-color: #ff9800; }
+.catalog .views-results li:nth-child(4)  { background-color: #e51c23; }
+.catalog .views-results li:nth-child(5)  { background-color: #9c27b0; }
+.catalog .views-results li:nth-child(6)  { background-color: #3F51B5; }
+.catalog .views-results li:nth-child(7)  { background-color: #03a9f4; }
+.catalog .views-results li:nth-child(8)  { background-color: #607D8B; }
+.catalog .views-results li:nth-child(9)  { background-color: #009688; }
+
+.catalog-item { padding: 15% 1em 15% 40px; }
+.ui-listview>li>a.ui-btn.catalog-item { margin-left: 8% }
 .catalog-item:hover { opacity: 0.8; }
 .catalog .views-results.ui-listview>li { margin-top: 8px; box-shadow: 1px 1px 6px #333; }
 .catalog .views-results.ui-listview>li .catalog-item h2 {
@@ -42,40 +56,45 @@
 }
 
 /* список товаров */
-.strada-products .nd2-card { border-radius: 0; margin: 5px auto; }
-.strada-products .nd2-card>a { padding: 0; }
-.strada-products .nd2-card.card-media-left.card-media-medium  .card-title .card-primary-title,
-.strada-products .nd2-card .card-title .card-primary-title {
+a.product-item { padding-top: 0; padding-bottom: 0; }
+.product-item .nd2-card { border-radius: 0; margin: 5px auto; }
+.product-item .nd2-card.card-media-left.card-media-medium  .card-title .card-primary-title,
+.product-item .nd2-card .card-title .card-primary-title {
 	font-size: 17px; line-height: 20px; white-space: normal;
 }
-.strada-products .nd2-card .card-title .card-subtitle {
+.product-item .nd2-card .card-title .card-subtitle {
 	font-size: 13px; line-height: 14px; white-space: normal;
 	margin-top: 5px;
 }
-.strada-products .ui-listview>.ui-li-static {
+.product-item .ui-listview>.ui-li-static {
 	padding: 0 1em;
 }
-.strada-products .nd2-card.card-media-left { min-height: initial; }
-.strada-products .nd2-card.card-media-left.card-media-medium  .card-title .card-primary-title,
-.strada-products .nd2-card.card-media-left.card-media-medium  .card-title .card-subtitle {
+.product-item .nd2-card.card-media-left { min-height: initial; }
+.product-item .nd2-card.card-media-left.card-media-medium  .card-title .card-primary-title,
+.product-item .nd2-card.card-media-left.card-media-medium  .card-title .card-subtitle {
 	margin-left: 120px;
 }
-.strada-products .nd2-card.card-media-left.card-media-medium .card-media {
+.product-item .nd2-card.card-media-left.card-media-medium .card-media {
 	width: 112px; height: 112px;
 }
-.strada-products .nd2-card .card-media img { width: 100%!important;}
-.strada-products .nd2-card .card-bottom { font-size: 1.5em; text-align: right; padding: 0 10px 10px; }
-.strada-products a.product-item.ui-btn { padding: 0 10px; }
+.product-item .nd2-card .card-media img { width: 100%!important;}
+.product-item .nd2-card .card-bottom { font-size: 1.5em; text-align: right; padding: 0 10px 10px; }
+.product-item a.product-item.ui-btn { padding: 0 10px; }
 
 
 /*карточка товара*/
-.price  { font-size: 2.5em; text-align: right; margin-bottom: 20px; }
+.price  { font-size: 1.5em; text-align: right; margin-bottom: 20px; }
 .price span { color: #aaa; font-size: .4em; text-transform: uppercase; margin-right: 10px; }
 .short_descr { color: #aaa; text-align: justify; }
 .description { text-align: justify; }
 
 
 /*корзина*/
+.cart .nd2-card .card-title .card-primary-title  {
+    font-size: 1em; font-weight: 400; line-height: 1.4em;
+    white-space: normal;
+    max-width: 90%;
+}
 .cart .nd2-card .card-title.has-supporting-text {
 	background-color: #eee;
 	padding: 10px 16px;
@@ -128,21 +147,21 @@
 @media all and (max-width: 360px) {
 	.catalog .views-results.ui-listview>li { margin-top: 3px; }
 
-	.strada-products .nd2-card.card-media-left.card-media-medium  .card-title .card-primary-title {
+	.product-item .nd2-card.card-media-left.card-media-medium  .card-title .card-primary-title {
 		font-size: .9em; font-weight: 800; line-height: 1.3em;
 	}
-	.strada-products .nd2-card .card-title { padding: 16px 16px 5px 16px; }
-	.strada-products .nd2-card .card-title .card-subtitle {
+	.product-item .nd2-card .card-title { padding: 16px 16px 5px 16px; }
+	.product-item .nd2-card .card-title .card-subtitle {
 		font-size: .7em;
 	}
-	.strada-products .nd2-card.card-media-left.card-media-medium .card-media {
+	.product-item .nd2-card.card-media-left.card-media-medium .card-media {
 		width: 60px; height: 60px;
 	}
-	.strada-products .nd2-card.card-media-left.card-media-medium  .card-title .card-primary-title,
-	.strada-products .nd2-card.card-media-left.card-media-medium  .card-title .card-subtitle {
+	.product-item .nd2-card.card-media-left.card-media-medium  .card-title .card-primary-title,
+	.product-item .nd2-card.card-media-left.card-media-medium  .card-title .card-subtitle {
 		margin-left: 70px;
 	}
-	.strada-products .nd2-card .card-bottom { font-size: 1em; }
+	.product-item .nd2-card .card-bottom { font-size: 1em; }
 
 
 	.cart .nd2-card .card-title.has-supporting-text {
@@ -150,8 +169,9 @@
 		padding: 8px 16px;
 	}
 	.cart .nd2-card .card-title .card-primary-title {
-		font-size: 1.2em; font-weight: 600;
-	}
+        font-size: 1em; font-weight: 400; line-height: 1.5em;
+        white-space: normal;
+    }
 	.cart .total-price {
 		font-size: 1.1em; font-weight: 600; text-align: right;
 		padding: 8px 8px 0 0;

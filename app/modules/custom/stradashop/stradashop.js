@@ -12,7 +12,7 @@ function stradashop_menu() {
             title: 'Каталог',
             page_callback: 'strada_catalog_page'
         };
-        items['strada-products/%'] = {
+        items['products/%'] = {
             title: 'Препараты',
             page_callback: 'strada_products_page'
         };
@@ -38,7 +38,7 @@ function strada_catalog_page() {
         content['stradashop_list'] = {
             theme: 'view',
             format: 'ul',
-            path: 'strada-catalog.json',
+            path: 'catalog.json',
             row_callback: 'strada_catalog_page_row'
         };
         return content;
@@ -49,10 +49,10 @@ function strada_catalog_page() {
 function strada_catalog_page_row(view, row) {
     try {
         // вернуть html код строки любой категории, кроме "Все продукты"
-        var title = '<h2>' + row.name1 + '</h2>';
-        return l(title, 'strada-products/' + row.tid, {
+        var title = '<h2>' + row.name + '</h2>';
+        return l(title, 'products/' + row.tid, {
             'attributes': {
-                'style': "background: linear-gradient(to right, #" + row.color + " 0, #" + row.color + " 40px, rgba(255,255,255,0) 40px), url('" + row.img.src + "') 0 0 no-repeat; background-size: cover;",
+                'style': "background: url('" + row.img.src + "') 0 0 no-repeat; background-size: cover;",
                 'class': 'catalog-item'
             }
         });
@@ -72,7 +72,7 @@ function strada_products_page() {
         content['stradashop_list'] = {
             theme: 'view',
             format: 'ul',
-            path: 'strada.json/' + category_tid,
+            path: 'products.json/' + category_tid,
             row_callback: 'strada_products_page_row',
             empty_callback: 'strada_products_page_empty'
         };
@@ -92,7 +92,7 @@ function strada_products_page_row(view, row) {
                 + '         <h5 class="card-subtitle">' + row.descr + '</h5>'
                 + '     </div>'
                 + '     <div class="card-bottom">'
-                + '         <h3 class="card-primary-title">' + row.price1 + '</h3>'
+                + '         <h3 class="card-primary-title">' + row.price + '</h3>'
                 + '     </div>'
                 + '</div>';
 
@@ -124,65 +124,63 @@ function stradashop_form_alter(form, form_state) {
             // страница подробного описания препарата
             // добавить в форму и вывести поля из Product Variants
             case 'commerce_cart_add_to_cart_form':
+
+                console.log('add_to_cart_form');
+
                 var arguments = form["arguments"];
                 //var pid = _commerce_product_display_product_id;
                 var pid = arguments[0].field_product[0];
                 _commerce_product_display_product_id = pid;
 
-                var src = arguments[0].field_product_entities[pid].field_p_images_url[0];
+                var src = arguments[0].field_product_entities[pid].field_p_image_url[0];
                 var price = arguments[0].field_product_entities[pid].commerce_price_formatted;
                 var fprice = parseFloat(price);
                 var short_descr = arguments[0].body.safe_summary;
                 var descr = arguments[0].body.safe_value;
 
 
-                // если цена == 0 нужно вывести сообщение вместо неё и запретить добавление товара в корзину
-                var mprice = 'Цена товара вскоре будет обновлена';
-                if (fprice) mprice = '<span>Цена </span> ' + price;
-                //elements.price = {
-                //    markup: mprice
-                //};
-
-
                 // добавляем поля из product variants
                 // чтобы поля выводились на странице в нужном порядке, переберем массив
                 var elements = {};
 
-                elements.mrkup_1 = {
-                    markup: '<div class="row">'
+                // если цена == 0 нужно вывести сообщение вместо неё и запретить добавление товара в корзину
+                mprice = fprice ? price : 'Цена товара вскоре будет обновлена';
+
+                form.prefix +=
+                      '     <div class="row">'
                     + '         <div class="col-xs-12 col-sm-6 col-md-6 col-lg-6">'
-                    + '             <div class="box">'
+                    + '             <div id="p_image" class="box">'
                     + '                 <img src="' + src + '"/>'
                     + '             </div>'
                     + '         </div>'
                     + '         <div class="col-xs-12 col-sm-6 col-md-6 col-lg-6">'
                     + '             <div class="box">'
                     + '                 <div class="short_descr">' + short_descr + '</div>'
-                    + '                 <div class="price">' + mprice + ''
-                };
+                    + '                 <div id="p_price" class="price">Цена: <b>' + mprice + '</b></div>';
+                form.suffix +=
+                      '             </div>'
+                    + '         </div>'
+                    + '     </div>';
+
+
+                // зададим значение по умолчанию для Тары
+                var def = count = 0;
+                for (var key in form.elements['field_p_tare']['ru'][0].options) {
+                    if (!isNaN(parseInt(key))) {
+                        def = def ? def : key;
+                        count++;
+                    }
+                }
+                if (count > 1) {
+                    form.elements['field_p_tare']['ru'][0]['value'] = key;
+                    form.elements.field_p_tare.title = '';
+                } else form.elements.field_p_tare.access = false;
 
                 // кнопка добавления в корзину
-                elements.submit = form.elements.submit;
-                if (!fprice) elements.submit.disabled = true;
-
-                elements.mrkup_2 = {
-                    markup: '</div></div>'
-                    + '             </div>'
-                    + '         </div>'
-                    + '         <div class="row">'
-                    + '             <div class="col-xs-12 col-sm-12 col-md-12 col-lg-12">'
-                    + '                 <div class="box description">'
-                    + '                 ' + descr
-                    + '                 </div>'
-                    + '             </div>'
-                    + '         </div>'
-                    + '     </div>'
-                };
-
-                // кнопка submit
-                elements.submit.value = 'В корзину';
-                elements.submit.options.attributes.class = 'ui-btn ui-btn-raised clr-primary waves-effect waves-button';
-                form.elements = elements;
+                form.elements.submit.access = false;
+                form.elements.submit.value = 'В корзину';
+                form.elements.submit.options.attributes.class = 'ui-btn ui-btn-raised clr-primary waves-effect waves-button';
+                if (!fprice) form.elements.submit.disabled = true;
 
                 break;
             case 'user_login_form':
@@ -218,6 +216,19 @@ function stradashop_form_alter(form, form_state) {
     catch (error) {
         console.log('stradashop_form_commerce_cart_add_to_cart_form_alter - ' + error);
     }
+}
+
+
+// перекрытие функции из commerce.js (строка 824)
+// при смене атрибутов меняем цену и картинку
+function _commerce_cart_attribute_change() {
+    try {
+        var pid = _commerce_product_display_get_current_product_id();
+        _commerce_product_display_product_id = pid;
+        $('#p_price').html('<b>Цена: </b>' + _commerce_product_display['field_product_entities'][pid]['commerce_price_formatted']);
+        $('#p_image').html('<img src="' + _commerce_product_display['field_product_entities'][pid]['field_p_image_url'][0] + '" />');
+    }
+    catch (error) { console.log('_commerce_cart_attribute_change - ' + error); }
 }
 
 ///**
@@ -551,12 +562,12 @@ function commerce_cart_clear(options){
  * Implements hook_node_page_view_alter_TYPE().
  * изменение отрендеренной ноды
  */
-function stradashop_node_page_view_alter_product_strada(node, options) {
+function stradashop_node_page_view_alter_product(node, options) {
     try {
         // выведем контент без title
         options.success(node.content);
     }
-    catch (error) { console.log('stradashop_node_page_view_alter_product_strada - ' + error); }
+    catch (error) { console.log('stradashop_node_page_view_alter_product - ' + error); }
 }
 
 /***********************************
@@ -608,14 +619,15 @@ function stradashop_block_view(delta, region) {
                 if (Drupal.user.uid == 0) {
                     var items = [
                         bl('<i class="zmdi zmdi-format-list-bulleted"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('Catalog'), 'catalog', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
-                        bl('<i class="zmdi zmdi-account-add"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('Register'), 'user/register', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
-                        bl('<i class="zmdi zmdi-sign-in"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('Login'), 'user/login', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
+                        // bl('<i class="zmdi zmdi-account-add"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('Register'), 'user/register', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
+                        // bl('<i class="zmdi zmdi-sign-in"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('Login'), 'user/login', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
+                        bl('<i class="zmdi zmdi-close-circle-o"></i>' + '&nbsp;&nbsp;&nbsp;' +  'Выйти из приложения', '#', { attributes: { class: 'ui-btn waves-effect waves-button', onclick: '_drupalgap_back_exit(1);'}})
                     ];
                 } else {
                     var items = [
                         bl('<i class="zmdi zmdi-format-list-bulleted"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('Catalog'), 'catalog', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
-                        bl('<i class="zmdi zmdi-shopping-basket"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('Shopping cart'), 'cart', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
-                        bl('<i class="zmdi zmdi-account"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('My account'), 'user', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
+                        // bl('<i class="zmdi zmdi-shopping-basket"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('Shopping cart'), 'cart', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
+                        // bl('<i class="zmdi zmdi-account"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('My account'), 'user', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
                         bl('<i class="zmdi zmdi-close-circle-o"></i>' + '&nbsp;&nbsp;&nbsp;' +  'Выйти из приложения', '#', { attributes: { class: 'ui-btn waves-effect waves-button', onclick: '_drupalgap_back_exit(1);'}})
                     ];
                 }
@@ -659,23 +671,23 @@ function stradashop_block_view(delta, region) {
                         }
                     });
                 }
-                if (drupalgap_router_path_get() != 'cart') {
-                    content += bl('', '#', {
-                        attributes: {
-                            class: 'ui-btn ui-btn-right zmdi zmdi-shopping-basket wow fadeIn waves-effect waves-button',
-                            'data-wow-delay': '0.8s',
-                            onclick: "javascript:drupalgap_goto('cart', {reloadPage: true});"
-                        }
-                    });
-                } else {
-                    content += bl('', '#', {
-                        attributes: {
-                            class: 'ui-btn ui-btn-right zmdi zmdi-delete wow fadeIn waves-effect waves-button',
-                            'data-wow-delay': '0.8s',
-                            onclick: 'stradashop_commerce_cart_clear();'
-                        }
-                    });
-                }
+                // if (drupalgap_router_path_get() != 'cart') {
+                //     content += bl('', '#', {
+                //         attributes: {
+                //             class: 'ui-btn ui-btn-right zmdi zmdi-shopping-basket wow fadeIn waves-effect waves-button',
+                //             'data-wow-delay': '0.8s',
+                //             onclick: "javascript:drupalgap_goto('cart', {reloadPage: true});"
+                //         }
+                //     });
+                // } else {
+                //     content += bl('', '#', {
+                //         attributes: {
+                //             class: 'ui-btn ui-btn-right zmdi zmdi-delete wow fadeIn waves-effect waves-button',
+                //             'data-wow-delay': '0.8s',
+                //             onclick: 'stradashop_commerce_cart_clear();'
+                //         }
+                //     });
+                // }
                 break;
         }
         return content;

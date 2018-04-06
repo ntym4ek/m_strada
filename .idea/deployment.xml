@@ -2,21 +2,14 @@
 <project version="4">
   <component name="PublishConfigData">
     <serverData>
-      <paths name="joy">
+      <paths name="joy-magazin.ru">
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>
-      <paths name="kccc.ru">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="vagro">
+      <paths name="joy.kccc.local">
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />

@@ -3,10 +3,11 @@
  **************/
 
 // Uncomment to clear the app's local storage cache each time the app loads.
-//window.localStorage.clear();
+// window.localStorage.clear();
 
 // Set to true to see console.log() messages. Set to false when publishing app.
 Drupal.settings.debug = false;
+// Drupal.settings.debug = true;
 
 
 /*********************|
@@ -16,8 +17,8 @@ Drupal.settings.debug = false;
 // DrupalGap Mode (defaults to 'web-app')
 //  'web-app' - use this mode to build a web application for a browser window
 //  'phonegap' - use this mode to build a mobile application with phonegap
-drupalgap.settings.mode = 'web-app';
-// drupalgap.settings.mode = 'phonegap';
+// drupalgap.settings.mode = 'web-app';
+drupalgap.settings.mode = 'phonegap';
 
 // Language Files - locale/[language-code].json
 drupalgap.settings.locale = {
@@ -31,8 +32,8 @@ drupalgap.settings.locale = {
 /* DRUPAL PATHS */
 
 // Site Path (do not use a trailing slash)
-Drupal.settings.site_path = 'http://joy.kccc.local';
-// Drupal.settings.site_path = 'http://joy-magazin.ru';
+// Drupal.settings.site_path = 'http://joy.kccc.local';
+Drupal.settings.site_path = 'https://joy-magazin.ru';
 
 // Default Services Endpoint Path
 Drupal.settings.endpoint = 'drupalgap';
@@ -122,10 +123,8 @@ drupalgap.settings.title = 'Дача.Сад.Огород';
 
 // App Front Page
 drupalgap.settings.front = 'catalog';
-//drupalgap.settings.front = 'agro-catalog';
 
 // Theme
-//drupalgap.settings.theme = 'opie';
 drupalgap.settings.theme = 'nativeDroid';
 
 // Logo
@@ -156,7 +155,18 @@ drupalgap.settings.loader = {
 
 /** Contributed Modules - www/app/modules **/
 
-Drupal.modules.contrib['commerce'] = {};
+Drupal.modules.contrib['commerce'] = {
+    minified: true
+};
+drupalgap.settings.commerce = {
+    bundles: {
+        product: {
+            product_reference_field_name: 'field_product'
+        }
+    }
+};
+
+
 Drupal.modules.contrib['logintoboggan'] = {};
 
 /** Custom Modules - www/app/modules/custom **/
@@ -165,7 +175,6 @@ Drupal.modules.custom['address_book'] = {};
 Drupal.modules.custom['shipping'] = {};
 Drupal.modules.custom['payment'] = {};
 Drupal.modules.custom['stradashop'] = {};
-//Drupal.modules.custom['agroshop'] = {};
 
 /***************************************|
  * Menus - http://drupalgap.org/node/85 |
