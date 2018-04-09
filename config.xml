@@ -2,8 +2,8 @@
 <widget xmlns = "http://www.w3.org/ns/widgets"
         xmlns:gap = "http://phonegap.com/ns/1.0"
         id        = "com.kccc.strada"
-        versionCode="1.05"
-        version   = "1.05">
+        versionCode="1.06"
+        version   = "1.06">
     <name>Дача.Сад.Огород</name>
     <description>Каталог продукции компании ООО "СТРАДА"</description>
     <author href="joy-magazin.ru" email="support@joy-magazin.ru">STRADA</author>

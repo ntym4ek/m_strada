@@ -1,5 +1,5 @@
 cordova*js
-app/.gitignore
+.gitignore
 node_modules
 
 # Ignore jQM Theme Roller Files
@@ -9,4 +9,6 @@ bin/themes/*.css
 tools/*
 
 .drupalgap-backups
+
+app/themes/nativeDroid/examples
 

@@ -125,10 +125,25 @@ function stradashop_form_alter(form, form_state) {
             // добавить в форму и вывести поля из Product Variants
             case 'commerce_cart_add_to_cart_form':
 
-                console.log('add_to_cart_form');
+                // пересобрать массив атрибутов, собираемый в commerce_cart_add_to_cart_form()
+                // в массиве должны быть только атрибуты, по которым меняется commerce_product
+                // правка необходима, так как если добавить в commerce_product поле типа Логическое
+                // оно тоже окажется в этом массиве и сломает систему выбора атрибутов
+                _commerce_product_attribute_field_names = [];
+                var field_info_instances = drupalgap_field_info_instances('commerce_product', 'product');
+                $.each(field_info_instances, function(field_name, field) {
+                    if (
+                        typeof field.commerce_cart_settings !== 'undefined' &&
+                        typeof field.commerce_cart_settings.attribute_field !== 'undefined'
+                         && field.commerce_cart_settings.attribute_field != 0
+                    ) {
+                        _commerce_product_attribute_field_names.push(field_name);
+                    }
+                });
 
+                // меняем форму вывода атрибутов
+                // добавляем меняемые картинку и цену
                 var arguments = form["arguments"];
-                //var pid = _commerce_product_display_product_id;
                 var pid = arguments[0].field_product[0];
                 _commerce_product_display_product_id = pid;
 
@@ -136,12 +151,6 @@ function stradashop_form_alter(form, form_state) {
                 var price = arguments[0].field_product_entities[pid].commerce_price_formatted;
                 var fprice = parseFloat(price);
                 var short_descr = arguments[0].body.safe_summary;
-                var descr = arguments[0].body.safe_value;
-
-
-                // добавляем поля из product variants
-                // чтобы поля выводились на странице в нужном порядке, переберем массив
-                var elements = {};
 
                 // если цена == 0 нужно вывести сообщение вместо неё и запретить добавление товара в корзину
                 mprice = fprice ? price : 'Цена товара вскоре будет обновлена';
@@ -154,11 +163,11 @@ function stradashop_form_alter(form, form_state) {
                     + '             </div>'
                     + '         </div>'
                     + '         <div class="col-xs-12 col-sm-6 col-md-6 col-lg-6">'
-                    + '             <div class="box">'
-                    + '                 <div class="short_descr">' + short_descr + '</div>'
-                    + '                 <div id="p_price" class="price">Цена: <b>' + mprice + '</b></div>';
+                    + '             <div class="box">';
                 form.suffix +=
-                      '             </div>'
+                      '                 <div class="short_descr">' + short_descr + '</div>'
+                    + '                 <div id="p_price" class="price">Цена: <b>' + mprice + '</b></div>'
+                    + '             </div>'
                     + '         </div>'
                     + '     </div>';
 
@@ -665,7 +674,7 @@ function stradashop_block_view(delta, region) {
                 if (drupalgap_path_get() != drupalgap.settings.front) {
                     content += bl('', '#', {
                         attributes: {
-                            class: 'ui-btn ui-btn-right ui-btn-right2 zmdi zmdi-mail-reply wow fadeIn waves-effect waves-button',
+                            class: 'ui-btn ui-btn-right ui-btn-right zmdi zmdi-mail-reply wow fadeIn waves-effect waves-button',
                             'data-wow-delay': '0.8s',
                             onclick: 'javascript:drupalgap_back();'
                         }
