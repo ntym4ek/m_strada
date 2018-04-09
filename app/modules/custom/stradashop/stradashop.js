@@ -22,6 +22,10 @@ function stradashop_menu() {
             page_callback: 'drupalgap_get_form',
             page_arguments: ['stradashop_commerce_checkout_view', 1]
         };
+        items['about-us'] = {
+            title: t('About us'),
+            page_callback: 'about_us_page'
+        };
 
         return items;
     }
@@ -30,6 +34,22 @@ function stradashop_menu() {
     }
 }
 
+
+
+// страница О компании
+function about_us_page() {
+    try {
+        var html = '<p>Торговый Дом «Кирово-Чепецкая Химическая Компания» уже более 20 лет предлагает сельхозпроизводителям эффективные средства защиты растений. Фирма успешно работает и в сфере производства препаратов и агрохимикатов для дома и дачи под торговой маркой JOY.</p>'
+            + '<p>Продукция торговой марки JOY отличается высоким качеством, привлекательным внешним видом и удобством использования.</p>'
+            + '<p>Мы имеем десятилетний опыт успешных продаж, стремимся активно осваивать новые производственные возможности, поддерживать современные тенденции развития и выпускать качественный и полезный продукт.</p>';
+
+        html += '<p>С нашими препаратами Ваш дом станет уютным и красивым, а огород ухоженным и богатым на урожай!</p>';
+        html += '<p>Подробную информацию о компании и продукции, а так же оформить заказ и оплатить онлайн можно на нашем сайте ' + l('https://joy-magazin.ru', 'https://joy-magazin.ru', { InAppBrowser: false }) + '</p>';
+
+        return html;
+    }
+    catch (error) { console.log('about_us_page - ' + error); }
+}
 
 // список категорий
 function strada_catalog_page() {
@@ -627,17 +647,19 @@ function stradashop_block_view(delta, region) {
                 };
                 if (Drupal.user.uid == 0) {
                     var items = [
-                        bl('<i class="zmdi zmdi-format-list-bulleted"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('Catalog'), 'catalog', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
+                        bl('<i class="zmdi zmdi-format-list-bulleted"></i>' + '&nbsp;&nbsp;&nbsp;' + t('Catalog'), 'catalog', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
+                        bl('<i class="zmdi zmdi-info-outline"></i>' + '&nbsp;&nbsp;&nbsp;' + t('About us'), 'about-us', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
                         // bl('<i class="zmdi zmdi-account-add"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('Register'), 'user/register', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
                         // bl('<i class="zmdi zmdi-sign-in"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('Login'), 'user/login', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
-                        bl('<i class="zmdi zmdi-close-circle-o"></i>' + '&nbsp;&nbsp;&nbsp;' +  'Выйти из приложения', '#', { attributes: { class: 'ui-btn waves-effect waves-button', onclick: '_drupalgap_back_exit(1);'}})
+                        bl('<i class="zmdi zmdi-close"></i>' + '&nbsp;&nbsp;&nbsp;' +  'Выйти из приложения', '#', { attributes: { class: 'ui-btn waves-effect waves-button', onclick: '_drupalgap_back_exit(1);'}})
                     ];
                 } else {
                     var items = [
                         bl('<i class="zmdi zmdi-format-list-bulleted"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('Catalog'), 'catalog', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
+                        bl('<i class="zmdi zmdi-info-outline"></i>' + '&nbsp;&nbsp;&nbsp;' + t('About us'), 'about-us', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
                         // bl('<i class="zmdi zmdi-shopping-basket"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('Shopping cart'), 'cart', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
                         // bl('<i class="zmdi zmdi-account"></i>' + '&nbsp;&nbsp;&nbsp;' +  t('My account'), 'user', { attributes: { class: 'ui-btn waves-effect waves-button'}}),
-                        bl('<i class="zmdi zmdi-close-circle-o"></i>' + '&nbsp;&nbsp;&nbsp;' +  'Выйти из приложения', '#', { attributes: { class: 'ui-btn waves-effect waves-button', onclick: '_drupalgap_back_exit(1);'}})
+                        bl('<i class="zmdi zmdi-close"></i>' + '&nbsp;&nbsp;&nbsp;' +  'Выйти из приложения', '#', { attributes: { class: 'ui-btn waves-effect waves-button', onclick: '_drupalgap_back_exit(1);'}})
                     ];
                 }
                 content +=" <div " + drupalgap_attributes(attrs) + ">"
